@@ -1,0 +1,31 @@
+# Sensitive / certs
+nginx/certs/
+*.key
+*.pem
+*.crt
+
+# Backend
+backend/.env
+backend/vendor/
+backend/storage/app/private/
+backend/storage/logs/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/bootstrap/cache/
+
+# Frontend
+frontend/.env
+frontend/.env.local
+frontend/node_modules/
+frontend/.next/
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
