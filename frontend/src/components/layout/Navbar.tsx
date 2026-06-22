@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ShoppingCart, Bell, Search, Menu, User, LogOut, LayoutDashboard, Store } from "lucide-react";
+import { ShoppingCart, Bell, Search, Menu, User, LogOut, LayoutDashboard, Store, Heart } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useCartStore } from "@/store/cart.store";
 import { useNotificationStore } from "@/store/notification.store";
@@ -30,7 +30,7 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link href="/" className="text-xl font-black text-primary shrink-0">
-          🛍️ MarketplaceHub
+          🛍️ CamCart
         </Link>
 
         {/* Search */}
@@ -64,6 +64,13 @@ export default function Navbar() {
                 </span>
               )}
             </button>
+          )}
+
+          {/* Favorites */}
+          {isAuthenticated && user?.role === "customer" && (
+            <Link href="/wishlist" className="p-2 hover:bg-muted rounded-full" aria-label="Favorites">
+              <Heart className="w-5 h-5" />
+            </Link>
           )}
 
           {/* Notifications */}

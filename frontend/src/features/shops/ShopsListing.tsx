@@ -1,12 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useState } from "react";
 import { Star, Store, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/axios";
 import type { Shop } from "@/types";
+
+function ShopLogo({ src, alt, size }: { src: string; alt: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="w-full h-full bg-primary/10 flex items-center justify-center">
+        <Store className="w-5 h-5 text-primary/50" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ShopBanner({ src }: { src: string }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      className="absolute inset-0 w-full h-full object-cover"
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
+    />
+  );
+}
 
 export default function ShopsListing() {
   const [search, setSearch] = useState("");
@@ -63,14 +94,12 @@ export default function ShopsListing() {
                 className="group bg-card border rounded-2xl overflow-hidden hover:shadow-lg transition-shadow"
               >
                 <div className="h-24 bg-gradient-to-r from-primary/20 to-blue-500/20 relative">
-                  {shop.banner && (
-                    <Image src={shop.banner} alt="" fill className="object-cover" />
-                  )}
+                  {shop.banner && <ShopBanner src={shop.banner} />}
                 </div>
                 <div className="p-4 -mt-6">
                   <div className="w-12 h-12 bg-card border-2 border-background rounded-xl overflow-hidden mb-2">
                     {shop.logo
-                      ? <Image src={shop.logo} alt={shop.name} width={48} height={48} className="object-cover" />
+                      ? <ShopLogo src={shop.logo} alt={shop.name} size={48} />
                       : <div className="w-full h-full bg-primary/10 flex items-center justify-center">
                           <Store className="w-5 h-5 text-primary/50" />
                         </div>

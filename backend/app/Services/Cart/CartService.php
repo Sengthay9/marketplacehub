@@ -13,7 +13,7 @@ class CartService
     public function getCart(int $userId): Cart
     {
         return Cart::firstOrCreate(['user_id' => $userId])
-            ->load(['items.product.images', 'items.variant']);
+            ->load(['items.product.images', 'items.product.shop:id,name,slug', 'items.variant']);
     }
 
     public function addItem(int $userId, array $data): Cart
@@ -23,7 +23,7 @@ class CartService
             ? ProductVariant::findOrFail($data['variant_id'])
             : null;
 
-        if ($product->status !== 'published') {
+        if ($product->status !== 'active') {
             throw ValidationException::withMessages(['product' => 'Product is not available.']);
         }
 

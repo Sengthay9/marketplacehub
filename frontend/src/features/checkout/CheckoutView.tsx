@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,7 +11,6 @@ import {
   CreditCard, MapPin, Tag, Check, ArrowRight,
   Banknote, Smartphone, Building2, Plus, Trash2, Star, QrCode,
 } from "lucide-react";
-import Image from "next/image";
 import api from "@/lib/axios";
 import { orderService } from "@/services/order.service";
 import { formatCurrency } from "@/lib/utils";
@@ -23,7 +22,7 @@ import PaymentQRModal, { type ShopQrCode } from "./PaymentQRModal";
 import CardProcessingModal from "./CardProcessingModal";
 
 const schema = z.object({
-  address_id:     z.number({ required_error: "Please select a delivery address." }),
+  address_id:     z.coerce.number({ required_error: "Please select a delivery address." }).min(1, "Please select a delivery address."),
   payment_method: z.enum(["cod", "qr", "card"]),
   saved_card_id:  z.number().optional(),
   coupon_code:    z.string().optional(),
@@ -60,6 +59,7 @@ export default function CheckoutView() {
   const [cardErrors, setCardErrors]       = useState<Partial<Record<keyof CardData, string>>>({});
   const [useNewCard, setUseNewCard]       = useState(false);
 
+
   // Selected QR code from shop's list
   const [selectedQr, setSelectedQr]       = useState<ShopQrCode | null>(null);
 
@@ -90,7 +90,7 @@ export default function CheckoutView() {
   // Get the first shop slug from cart items (single-shop QR flow)
   const shopSlug: string | null = cart?.items?.[0]?.product?.shop?.slug ?? null;
 
-  const { data: shopQrCodes } = useQuery({
+  const { data: shopQrCodes, isLoading: qrLoading } = useQuery({
     queryKey: ["shop-qr", shopSlug],
     queryFn: async () => (await api.get(`/shops/${shopSlug}/payment-qr`)).data.data as ShopQrCode[],
     enabled: !!shopSlug,
@@ -166,6 +166,16 @@ export default function CheckoutView() {
 
   const hasSavedCards = savedCards && savedCards.length > 0;
 
+  // Auto-select first QR code when QR payment is chosen and codes are loaded
+  useEffect(() => {
+    if (paymentMethod === "qr" && shopQrCodes?.length && !selectedQr) {
+      setSelectedQr(shopQrCodes[0]);
+    }
+    if (paymentMethod !== "qr") {
+      setSelectedQr(null);
+    }
+  }, [paymentMethod, shopQrCodes]);
+
   // Group shop QR codes by currency for display
   const qrByUSD = shopQrCodes?.filter((q) => q.currency === "usd") ?? [];
   const qrByKHR = shopQrCodes?.filter((q) => q.currency === "khr") ?? [];
@@ -208,6 +218,11 @@ export default function CheckoutView() {
                     </div>
                   </label>
                 ))}
+                <a href="/account"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 border-2 border-dashed rounded-xl text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
+                >
+                  <Plus className="w-4 h-4" /> Add a new address
+                </a>
               </div>
             )}
             {errors.address_id && <p className="text-destructive text-xs mt-2">{errors.address_id.message}</p>}
@@ -272,13 +287,12 @@ export default function CheckoutView() {
                                   : "border-border hover:border-primary/50"
                               }`}
                             >
-                              <div className="w-16 h-16 relative bg-white rounded-lg p-1 border">
-                                <Image
+                              <div className="w-16 h-16 bg-white rounded-lg p-1 border flex items-center justify-center">
+                                <img
                                   src={qr.qr_image_url}
                                   alt={qr.bank_label}
-                                  fill
-                                  className="object-contain rounded"
-                                  onError={(e) => { (e.target as any).style.display = "none"; }}
+                                  className="w-full h-full object-contain rounded"
+                                  onError={(e) => { e.currentTarget.style.display = "none"; }}
                                 />
                               </div>
                               <div className="text-center">
@@ -413,7 +427,7 @@ export default function CheckoutView() {
               {[
                 ["Subtotal",  formatCurrency(summary?.subtotal ?? 0)],
                 ["Shipping",  formatCurrency(summary?.shipping_fee ?? 0)],
-                ["Tax (10%)", formatCurrency(summary?.tax_amount ?? 0)],
+                ["Tax (0.5%)", formatCurrency(summary?.tax_amount ?? 0)],
               ].map(([label, val]) => (
                 <div key={label} className="flex justify-between">
                   <span className="text-muted-foreground">{label}</span>
@@ -434,10 +448,18 @@ export default function CheckoutView() {
 
             <button
               type="submit"
-              disabled={placeOrderMutation.isPending || !addresses?.length}
+              disabled={
+                placeOrderMutation.isPending ||
+                !addresses?.length ||
+                (paymentMethod === "qr" && (qrLoading || !selectedQr))
+              }
               className="w-full mt-5 py-3.5 bg-primary text-white font-semibold rounded-xl hover:bg-primary/90 transition disabled:opacity-50"
             >
-              {placeOrderMutation.isPending ? "Placing Order…" : "Place Order"}
+              {placeOrderMutation.isPending
+                ? "Placing Order…"
+                : paymentMethod === "qr" && qrLoading
+                ? "Loading QR options…"
+                : "Place Order"}
             </button>
 
             {!addresses?.length && (

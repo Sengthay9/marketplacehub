@@ -42,6 +42,8 @@ use App\Http\Controllers\Api\V1\Vendor\VendorPaymentQrController;
 use App\Http\Controllers\Api\V1\Admin\AdminVendorKycController;
 use App\Http\Controllers\Api\V1\Admin\AdminCommissionController;
 use App\Http\Controllers\Api\V1\ProfileController as SharedProfileController;
+use App\Http\Controllers\Api\V1\Customer\ShopReviewController;
+use App\Http\Controllers\Api\V1\Customer\ShopFavoriteController;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,26 +61,31 @@ Route::prefix('v1')->group(function () {
         // Google OAuth
         Route::get('google',             [SocialAuthController::class, 'redirectToGoogle']);
         Route::get('google/callback',    [SocialAuthController::class, 'handleGoogleCallback']);
-        // Phone OTP
+        Route::post('google/token',      [SocialAuthController::class, 'handleGoogleToken']);
+        // Phone OTP (legacy Twilio)
         Route::post('phone/send-otp',    [PhoneAuthController::class, 'sendOtp'])->middleware('throttle:5,1');
         Route::post('phone/verify-otp',  [PhoneAuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
         Route::post('phone/register',    [PhoneAuthController::class, 'register'])->middleware('throttle:5,1');
+        // Phone via Firebase
+        Route::post('phone/firebase',    [PhoneAuthController::class, 'firebaseLogin'])->middleware('throttle:10,1');
         Route::post('forgot-password',   [PasswordResetController::class, 'sendLink'])->middleware('throttle:3,1');
         Route::post('reset-password',    [PasswordResetController::class, 'reset'])->middleware('throttle:5,1');
         // Email verification (public — user clicks link in email)
         Route::get('email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->name('verification.verify');
         Route::post('email/resend',            [EmailVerificationController::class, 'resend'])->middleware('throttle:3,1');
-        // Vendor KYC registration (public — no account needed yet)
-        Route::post('vendor/register', [VendorKycController::class, 'register'])->middleware('throttle:3,1');
+        // Vendor registration (simple — no KYC documents)
+        Route::post('vendor/register', [VendorKycController::class, 'register'])->middleware('throttle:5,1');
     });
 
     // Public catalog
     Route::get('products',            [ProductController::class, 'index']);
     Route::get('products/{slug}',     [ProductController::class, 'show']);
-    Route::get('shops',                    [ShopController::class, 'index']);
-    Route::get('shops/{slug}',             [ShopController::class, 'show']);
-    Route::get('shops/{slug}/products',    [ShopController::class, 'products']);
-    Route::get('shops/{slug}/payment-qr',  [ShopController::class, 'paymentQrCodes']);
+    Route::get('shops',                          [ShopController::class, 'index']);
+    Route::get('shops/{slug}',                   [ShopController::class, 'show']);
+    Route::get('shops/{slug}/products',          [ShopController::class, 'products']);
+    Route::get('shops/{slug}/payment-qr',        [ShopController::class, 'paymentQrCodes']);
+    Route::get('shops/{slug}/reviews',           [ShopReviewController::class, 'index']);
+    Route::get('reviews',                        [ReviewController::class, 'index']);
     Route::get('categories',          [CategoryController::class, 'index']);
     Route::get('categories/{slug}',   [CategoryController::class, 'show']);
     Route::get('categories/{slug}/products', [CategoryController::class, 'products']);
@@ -144,10 +151,18 @@ Route::prefix('v1')->group(function () {
             Route::get('orders/{id}',        [OrderController::class, 'show']);
             Route::post('orders/{id}/cancel',[OrderController::class, 'cancel']);
 
-            // Reviews
+            // Product Reviews
             Route::post('reviews',           [ReviewController::class, 'store']);
             Route::put('reviews/{id}',       [ReviewController::class, 'update']);
             Route::delete('reviews/{id}',    [ReviewController::class, 'destroy']);
+
+            // Shop Reviews
+            Route::post('shops/{slug}/reviews',           [ShopReviewController::class, 'store']);
+            Route::delete('shop-reviews/{id}',            [ShopReviewController::class, 'destroy']);
+
+            // Shop Favorites
+            Route::get('shop-favorites',              [ShopFavoriteController::class, 'index']);
+            Route::post('shops/{slug}/favorite',      [ShopFavoriteController::class, 'toggle']);
 
             // Notifications
             Route::get('notifications',              [NotificationController::class, 'index']);
@@ -174,11 +189,12 @@ Route::prefix('v1')->group(function () {
         */
         Route::middleware('role:vendor')->prefix('vendor')->group(function () {
             // Shop management
-            Route::get('shop',    [VendorShopController::class, 'show']);
-            Route::post('shop',   [VendorShopController::class, 'create']);
-            Route::put('shop',    [VendorShopController::class, 'update']);
-            Route::post('shop/logo',   [VendorShopController::class, 'uploadLogo']);
-            Route::post('shop/banner', [VendorShopController::class, 'uploadBanner']);
+            Route::get('shop',           [VendorShopController::class, 'show']);
+            Route::post('shop',          [VendorShopController::class, 'create']);
+            Route::put('shop',           [VendorShopController::class, 'update']);
+            Route::post('shop/toggle',   [VendorShopController::class, 'toggleStatus']);
+            Route::post('shop/logo',     [VendorShopController::class, 'uploadLogo']);
+            Route::post('shop/banner',   [VendorShopController::class, 'uploadBanner']);
 
             // Dashboard & analytics
             Route::get('dashboard',                  [VendorDashboardController::class, 'index']);
@@ -188,6 +204,7 @@ Route::prefix('v1')->group(function () {
 
             // Products
             Route::apiResource('products', VendorProductController::class);
+            Route::post('products/{id}/toggle', [VendorProductController::class, 'toggle']);
             Route::post('products/{id}/images',          [VendorProductController::class, 'uploadImages']);
             Route::delete('products/{id}/images/{imgId}',[VendorProductController::class, 'deleteImage']);
             Route::post('products/{id}/variants',        [VendorProductController::class, 'addVariant']);
@@ -197,9 +214,11 @@ Route::prefix('v1')->group(function () {
             // Orders
             Route::get('orders',                    [VendorOrderController::class, 'index']);
             Route::get('orders/{id}',               [VendorOrderController::class, 'show']);
-            Route::post('orders/{id}/confirm',      [VendorOrderController::class, 'confirm']);
-            Route::post('orders/{id}/ship',         [VendorOrderController::class, 'ship']);
-            Route::post('orders/{id}/deliver',      [VendorOrderController::class, 'deliver']);
+            Route::post('orders/{id}/confirm',         [VendorOrderController::class, 'confirm']);
+            Route::post('orders/{id}/ship',            [VendorOrderController::class, 'ship']);
+            Route::post('orders/{id}/deliver',         [VendorOrderController::class, 'deliver']);
+            Route::post('orders/{id}/confirm-payment', [VendorOrderController::class, 'confirmPayment']);
+            Route::post('orders/{id}/reject-payment',  [VendorOrderController::class, 'rejectPayment']);
 
             // Inventory
             Route::get('inventory',                 [VendorInventoryController::class, 'index']);
@@ -240,6 +259,14 @@ Route::prefix('v1')->group(function () {
             Route::post('users/{id}/suspend', [AdminUserController::class, 'suspend']);
             Route::post('users/{id}/ban',     [AdminUserController::class, 'ban']);
             Route::post('users/{id}/unban',   [AdminUserController::class, 'unban']);
+            // Vendor management
+            Route::get('vendors',                    [AdminUserController::class, 'vendors']);
+            Route::post('vendors/{id}/warn',         [AdminUserController::class, 'warnVendor']);
+            Route::post('vendors/{id}/approve',      [AdminUserController::class, 'approveVendor']);
+            Route::post('vendors/{id}/reject',       [AdminUserController::class, 'rejectVendor']);
+            Route::post('vendors/{id}/suspend',      [AdminUserController::class, 'suspendVendor']);
+            Route::post('vendors/{id}/ban',          [AdminUserController::class, 'banVendor']);
+            Route::post('vendors/{id}/unban',        [AdminUserController::class, 'unbanVendor']);
 
             // Shops
             Route::apiResource('shops', AdminShopController::class)->except(['store']);

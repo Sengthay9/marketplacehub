@@ -32,7 +32,7 @@ class OrderService
 
         $subtotal  = $cart->items->sum(fn ($i) => $i->unit_price * $i->quantity);
         $shippingFee = count($shopGroups) * 2.00; // $2 per shop
-        $taxRate     = 0.10;
+        $taxRate     = 0.005;
         $taxAmount   = round($subtotal * $taxRate, 2);
 
         $discount   = 0.0;
@@ -45,7 +45,14 @@ class OrderService
 
         $total = round($subtotal + $shippingFee + $taxAmount - $discount, 2);
 
-        return compact('subtotal', 'shippingFee', 'taxAmount', 'discount', 'total', 'coupon');
+        return [
+            'subtotal'     => $subtotal,
+            'shipping_fee' => $shippingFee,
+            'tax_amount'   => $taxAmount,
+            'discount'     => $discount,
+            'total'        => $total,
+            'coupon'       => $coupon,
+        ];
     }
 
     public function placeOrder(int $userId, array $data): Order

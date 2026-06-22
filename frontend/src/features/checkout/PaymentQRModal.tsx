@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import Image from "next/image";
-import { CheckCircle, XCircle, RefreshCw, Clock, Shield, X, QrCode } from "lucide-react";
+import { CheckCircle, XCircle, RefreshCw, Clock, Shield, X } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/axios";
 import { formatCurrency } from "@/lib/utils";
@@ -100,18 +99,12 @@ export default function PaymentQRModal({ orderId, orderRef, total, qrCode, onSuc
               {/* Real QR image from vendor */}
               <div className="flex justify-center mb-3">
                 <div className="p-2 bg-white rounded-xl shadow border">
-                  <div className="relative w-44 h-44">
-                    <Image
-                      src={qrCode.qr_image_url}
-                      alt={`${qrCode.bank_label} QR`}
-                      fill
-                      className="object-contain rounded-lg"
-                      onError={(e) => {
-                        // Fallback placeholder if image fails
-                        (e.currentTarget as HTMLImageElement).src = "/images/qr-placeholder.png";
-                      }}
-                    />
-                  </div>
+                  <img
+                    src={qrCode.qr_image_url}
+                    alt={`${qrCode.bank_label} QR`}
+                    className="w-44 h-44 object-contain rounded-lg"
+                    onError={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+                  />
                 </div>
               </div>
 

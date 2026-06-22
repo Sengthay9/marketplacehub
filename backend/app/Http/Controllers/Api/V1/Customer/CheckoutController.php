@@ -37,7 +37,7 @@ class CheckoutController extends Controller
 
     public function placeOrder(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'address_id'     => 'required|integer|exists:addresses,id',
             'payment_method' => 'required|in:cod,aba,bakong,acleda,card',
             'saved_card_id'  => 'nullable|integer|exists:saved_cards,id',
@@ -45,7 +45,7 @@ class CheckoutController extends Controller
             'notes'          => 'nullable|string|max:500',
         ]);
 
-        $order = $this->orderService->placeOrder($request->user()->id, $request->validated());
+        $order = $this->orderService->placeOrder($request->user()->id, $validated);
 
         return response()->json([
             'message'      => 'Order placed successfully.',

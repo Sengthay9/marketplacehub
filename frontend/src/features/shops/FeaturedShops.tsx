@@ -1,11 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { Star, ShoppingBag, Store } from "lucide-react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/axios";
 import type { Shop } from "@/types";
+
+function ShopLogo({ src, alt, size }: { src: string; alt: string; size: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="w-full h-full bg-primary/10 flex items-center justify-center">
+        <Store className="w-7 h-7 text-primary/50" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      className="w-full h-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function ShopBanner({ src }: { src: string }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      className="absolute inset-0 w-full h-full object-cover"
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
+    />
+  );
+}
 
 export default function FeaturedShops() {
   const { data, isLoading } = useQuery({
@@ -46,14 +78,12 @@ export default function FeaturedShops() {
               >
                 {/* Banner */}
                 <div className="h-40 bg-gradient-to-r from-primary/20 to-blue-500/20 relative shrink-0">
-                  {shop.banner && (
-                    <Image src={shop.banner} alt="" fill className="object-cover" />
-                  )}
+                  {shop.banner && <ShopBanner src={shop.banner} />}
                 </div>
                 <div className="p-5 -mt-8 flex flex-col flex-1">
                   <div className="w-16 h-16 bg-card border-2 border-background rounded-2xl overflow-hidden mb-3 shadow-sm">
                     {shop.logo
-                      ? <Image src={shop.logo} alt={shop.name} width={64} height={64} className="object-cover" />
+                      ? <ShopLogo src={shop.logo} alt={shop.name} size={64} />
                       : <div className="w-full h-full bg-primary/10 flex items-center justify-center">
                           <Store className="w-7 h-7 text-primary/50" />
                         </div>
