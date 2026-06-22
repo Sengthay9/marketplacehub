@@ -18,7 +18,7 @@ export default function CallbackHandler() {
 
     if (error) {
       if (error === "not_configured") {
-        toast.error("Google sign-in is not set up yet. Please sign in with email.");
+        toast.error("Google sign-in is not set up yet. Please sign in with username or phone.");
       } else if (error === "not_registered") {
         toast.error("No account found with this Google account. Please sign up first.", { duration: 5000 });
         router.replace("/register");
