@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
         // ── Admin ──────────────────────────────────────────────────────────────
         $admin = User::firstOrCreate(['email' => 'admin@marketplacehub.com'], [
             'name'           => 'Platform Admin',
+            'username'       => 'admin',
             'password'       => Hash::make('Admin@2024'),
             'role'           => 'admin',
             'is_super_admin' => true,

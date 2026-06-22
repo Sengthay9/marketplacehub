@@ -6,11 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, Phone, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { Eye, EyeOff, Loader2, Phone } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useAuthStore } from "@/store/auth.store";
-import api from "@/lib/axios";
 
 function GoogleIcon() {
   return (
@@ -31,16 +28,8 @@ type FormData = z.infer<typeof schema>;
 
 export default function LoginForm() {
   const { login, isLoggingIn } = useAuth();
-  const { setAuth }            = useAuthStore();
-  const router                 = useRouter();
-
-  const [showPw,  setShowPw]  = useState(false);
-  const [phone,   setPhone]   = useState("");
-  const [otp,     setOtp]     = useState("");
-  const [otpStep, setOtpStep] = useState<"input" | "verify">("input");
-  const [devOtp,  setDevOtp]  = useState("");
-  const [sending, setSending] = useState(false);
-  const [showPhone, setShowPhone] = useState(false);
+  const router = useRouter();
+  const [showPw, setShowPw] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -48,52 +37,9 @@ export default function LoginForm() {
 
   const onSubmit = (data: FormData) => login(data as any);
 
-  const fullPhone = () => "+855" + phone.trim().replace(/^0/, "").replace(/[\s\-]/g, "");
-
-  const sendOtp = async () => {
-    const num = phone.trim().replace(/^0/, "").replace(/[\s\-]/g, "");
-    if (num.length < 7) { toast.error("Enter a valid phone number."); return; }
-    setSending(true);
-    try {
-      const res = await api.post("/auth/phone/send-otp", { phone: fullPhone() });
-      setOtpStep("verify");
-      if (res.data.dev_otp) {
-        setDevOtp(res.data.dev_otp);
-      } else {
-        toast.success("Verification code sent to your phone.");
-      }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Failed to send OTP.");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    if (otp.length !== 6) { toast.error("Enter the 6-digit code."); return; }
-    setSending(true);
-    try {
-      const { data } = await api.post("/auth/phone/verify-otp", {
-        phone:   fullPhone(),
-        otp,
-        purpose: "login",
-      });
-      setAuth(data.user, data.token);
-      toast.success(`Welcome back, ${data.user.name}!`);
-      if (data.user.role === "admin")  { router.replace("/admin/dashboard"); return; }
-      if (data.user.role === "vendor") { router.replace("/vendor/dashboard"); return; }
-      router.replace("/");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Invalid code. Try again.");
-      setOtp("");
-    } finally {
-      setSending(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
-      {/* ── Username + Password form ── */}
+      {/* Username + Password */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <label className="block text-sm font-semibold mb-1.5">Username</label>
@@ -140,14 +86,14 @@ export default function LoginForm() {
         </button>
       </form>
 
-      {/* ── Divider ── */}
+      {/* Divider */}
       <div className="flex items-center gap-3">
         <div className="flex-1 border-t" />
-        <span className="text-xs text-muted-foreground font-medium">or sign in with</span>
+        <span className="text-xs text-muted-foreground font-medium">or continue with</span>
         <div className="flex-1 border-t" />
       </div>
 
-      {/* ── Google ── */}
+      {/* Google */}
       <button
         type="button"
         onClick={() => { window.location.href = "/api/v1/auth/google?mode=login"; }}
@@ -156,81 +102,14 @@ export default function LoginForm() {
         <GoogleIcon /> Sign in with Google
       </button>
 
-      {/* ── Phone OTP ── */}
-      {!showPhone ? (
-        <button
-          type="button"
-          onClick={() => setShowPhone(true)}
-          className="w-full flex items-center justify-center gap-3 py-2.5 border-2 rounded-xl font-semibold text-sm hover:bg-muted transition"
-        >
-          <Phone className="w-4 h-4 text-green-600" /> Sign in with Phone
-        </button>
-      ) : (
-        <div className="border-2 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold flex items-center gap-2">
-              <Phone className="w-4 h-4 text-green-600" /> Phone verification
-            </span>
-            <button type="button" onClick={() => { setShowPhone(false); setOtpStep("input"); setOtp(""); setDevOtp(""); }}
-              className="text-xs text-muted-foreground hover:text-foreground transition">✕</button>
-          </div>
-
-          {otpStep === "input" ? (
-            <>
-              <div className="flex gap-2">
-                <div className="flex items-center gap-1 border-2 rounded-xl px-3 bg-muted/30 text-sm font-medium text-muted-foreground shrink-0">
-                  🇰🇭 +855
-                </div>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="11 665 875"
-                  className="flex-1 border-2 rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <button type="button" onClick={sendOtp} disabled={sending}
-                className="w-full py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50 flex items-center justify-center gap-2">
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
-                {sending ? "Sending…" : "Confirm"}
-              </button>
-            </>
-          ) : (
-            <>
-              {devOtp ? (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3 text-center">
-                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">SMS not configured — your code is:</p>
-                  <p className="text-2xl font-black tracking-widest text-amber-800 dark:text-amber-300">{devOtp}</p>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground text-center">
-                  Code sent to <strong>+855 {phone.replace(/^0/, "")}</strong>
-                </p>
-              )}
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                placeholder="• • • • • •"
-                className="w-full border-2 rounded-xl px-4 py-3 text-sm bg-background text-center tracking-[0.5em] font-mono text-xl focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-              <button type="button" onClick={verifyOtp} disabled={sending || otp.length !== 6}
-                className="w-full py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50 flex items-center justify-center gap-2">
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                {sending ? "Verifying…" : "Verify"}
-              </button>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <button type="button" onClick={() => { setOtpStep("input"); setOtp(""); setDevOtp(""); }}
-                  className="hover:text-foreground transition">← Change number</button>
-                <button type="button" onClick={sendOtp} disabled={sending}
-                  className="hover:text-foreground transition disabled:opacity-50">Resend code</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {/* Phone — navigate to separate page */}
+      <button
+        type="button"
+        onClick={() => router.push("/login/phone")}
+        className="w-full flex items-center justify-center gap-3 py-2.5 border-2 rounded-xl font-semibold text-sm hover:bg-muted transition"
+      >
+        <Phone className="w-4 h-4 text-green-600" /> Sign in with Phone
+      </button>
 
       <p className="text-center text-sm text-muted-foreground">
         No account?{" "}

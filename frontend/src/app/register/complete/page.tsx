@@ -2,7 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle, Eye, EyeOff, Loader2, User, Mail } from "lucide-react";
+import { CheckCircle, Eye, EyeOff, Loader2, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
 import api from "@/lib/axios";
@@ -17,7 +17,7 @@ function CompleteForm() {
 
   const [firstName, setFirstName] = useState("");
   const [lastName,  setLastName]  = useState("");
-  const [email,     setEmail]     = useState("");
+  const [username,  setUsername]  = useState("");
   const [password,  setPassword]  = useState("");
   const [confirm,   setConfirm]   = useState("");
   const [showPw,    setShowPw]    = useState(false);
@@ -43,18 +43,19 @@ function CompleteForm() {
       const parts = user.name.split(" ");
       setFirstName(parts[0] ?? "");
       setLastName(parts.slice(1).join(" ") ?? "");
-      setEmail(user.email ?? "");
+      if (user.username) setUsername(user.username);
     }
   }, [isAuthenticated, user, isPhone, phone, isGoogle, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstName.trim())       { toast.error("First name is required."); return; }
-    if (!lastName.trim())        { toast.error("Last name is required."); return; }
-    if (!password)               { toast.error("Password is required."); return; }
-    if (password.length < 8)     { toast.error("Password must be at least 8 characters."); return; }
-    if (password !== confirm)    { toast.error("Passwords do not match."); return; }
-    if (isPhone && !email.trim()) { toast.error("Email is required."); return; }
+    if (!firstName.trim())        { toast.error("First name is required."); return; }
+    if (!lastName.trim())         { toast.error("Last name is required."); return; }
+    if (!username.trim())         { toast.error("Username is required."); return; }
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) { toast.error("Username must be 3–30 characters: letters, numbers, underscore only."); return; }
+    if (!password)                { toast.error("Password is required."); return; }
+    if (password.length < 8)      { toast.error("Password must be at least 8 characters."); return; }
+    if (password !== confirm)     { toast.error("Passwords do not match."); return; }
 
     setLoading(true);
     try {
@@ -64,17 +65,18 @@ function CompleteForm() {
           phone,
           first_name:            firstName.trim(),
           last_name:             lastName.trim(),
-          email:                 email.trim(),
+          username:              username.trim(),
           password,
           password_confirmation: confirm,
         });
         setAuth(data.user, data.token);
         toast.success("Account created! Welcome to MarketplaceHub.");
       } else {
-        // Update existing Google account (name + password)
+        // Update existing Google account (name + password + username)
         const { data } = await api.patch("/auth/onboard", {
           first_name:            firstName.trim(),
           last_name:             lastName.trim(),
+          username:              username.trim(),
           password,
           password_confirmation: confirm,
         });
@@ -133,22 +135,21 @@ function CompleteForm() {
             </div>
           </div>
 
-          {/* Email — only for phone signups (Google already has it) */}
-          {isPhone && (
-            <div>
-              <label className="block text-sm font-semibold mb-1.5">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
+          {/* Username */}
+          <div>
+            <label className="block text-sm font-semibold mb-1.5">Username</label>
+            <div className="relative">
+              <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))}
+                placeholder="e.g. john_doe"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
             </div>
-          )}
+            <p className="text-xs text-muted-foreground mt-1">Letters, numbers and _ only. Used to sign in.</p>
+          </div>
 
           {/* Password */}
           <div>

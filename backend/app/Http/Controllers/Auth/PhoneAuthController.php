@@ -68,13 +68,14 @@ class PhoneAuthController extends Controller
             } catch (\Exception $e) {
                 return response()->json(['message' => 'Failed to send SMS. Check your phone number.'], 500);
             }
-        } else {
-            // Twilio not configured — return OTP directly so it can be shown on screen
+        } elseif (app()->environment('local', 'development')) {
             \Log::info("DEV OTP for {$phone}: {$otp}");
             return response()->json([
                 'message' => 'SMS not configured. Use the code shown on screen.',
                 'dev_otp'  => $otp,
             ]);
+        } else {
+            return response()->json(['message' => 'SMS service is not configured. Please sign in with email or Google.'], 503);
         }
 
         return response()->json(['message' => 'Verification code sent.']);
@@ -141,7 +142,8 @@ class PhoneAuthController extends Controller
             'phone'                => 'required|string',
             'first_name'           => 'required|string|max:255',
             'last_name'            => 'required|string|max:255',
-            'email'                => 'required|email|unique:users,email',
+            'username'             => 'required|string|min:3|max:30|regex:/^[a-zA-Z0-9_]+$/|unique:users,username',
+            'email'                => 'nullable|email|unique:users,email',
             'password'             => 'required|string|min:8|confirmed',
             'password_confirmation'=> 'required|string',
         ]);
@@ -162,7 +164,8 @@ class PhoneAuthController extends Controller
 
         $user = User::create([
             'name'           => trim($data['first_name'] . ' ' . $data['last_name']),
-            'email'          => $data['email'],
+            'username'       => $data['username'],
+            'email'          => $data['email'] ?? ($data['username'] . '@phone.local'),
             'phone'          => $phone,
             'password'       => $data['password'],
             'role'           => 'customer',

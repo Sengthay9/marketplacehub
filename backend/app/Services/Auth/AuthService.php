@@ -17,6 +17,7 @@ class AuthService
     {
         $user = User::create([
             'name'           => $data['name'],
+            'username'       => $data['username'],
             'email'          => $data['email'],
             'password'       => $data['password'],
             'phone'          => $data['phone'] ?? null,
@@ -49,6 +50,7 @@ class AuthService
         // Check soft-deleted users too so we can give a proper ban message
         $user = User::withTrashed()
                     ->where('email', $identifier)
+                    ->orWhere(fn ($q) => $q->where('username', $identifier))
                     ->orWhere(fn ($q) => $q->where('phone', $identifier))
                     ->first();
 
@@ -109,6 +111,7 @@ class AuthService
         return [
             'id'               => $user->id,
             'name'             => $user->name,
+            'username'         => $user->username,
             'email'            => $user->email,
             'phone'            => $user->phone,
             'avatar'           => $user->avatar,

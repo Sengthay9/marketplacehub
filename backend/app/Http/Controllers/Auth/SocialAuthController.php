@@ -61,8 +61,16 @@ class SocialAuthController extends Controller
             }
 
             $isNew = true;
+            $base     = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', explode('@', $googleUser->getEmail())[0]));
+            $username = $base ?: 'user';
+            $candidate = $username;
+            $i = 1;
+            while (User::where('username', $candidate)->exists()) {
+                $candidate = $username . $i++;
+            }
             $user = User::create([
                 'name'           => $googleUser->getName() ?? $googleUser->getEmail(),
+                'username'       => $candidate,
                 'email'          => $googleUser->getEmail(),
                 'google_id'      => $googleUser->getId(),
                 'avatar'         => $googleUser->getAvatar(),
@@ -94,11 +102,15 @@ class SocialAuthController extends Controller
         $data = $request->validate([
             'first_name' => 'required|string|max:255',
             'last_name'  => 'required|string|max:255',
+            'username'   => 'required|string|min:3|max:30|regex:/^[a-zA-Z0-9_]+$/|unique:users,username,' . $request->user()->id,
             'password'   => 'nullable|string|min:8|confirmed',
         ]);
 
         $user = $request->user();
-        $update = ['name' => trim($data['first_name'] . ' ' . $data['last_name'])];
+        $update = [
+            'name'     => trim($data['first_name'] . ' ' . $data['last_name']),
+            'username' => $data['username'],
+        ];
 
         if (!empty($data['password'])) {
             $update['password'] = $data['password'];

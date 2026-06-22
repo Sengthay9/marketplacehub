@@ -1,14 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Phone, Loader2, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
-import { useAuthStore } from "@/store/auth.store";
-import api from "@/lib/axios";
+import { Phone } from "lucide-react";
 
-// ─── Google icon ──────────────────────────────────────────────────────────────
 function GoogleIcon() {
   return (
     <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
@@ -20,145 +15,11 @@ function GoogleIcon() {
   );
 }
 
-// ─── Phone OTP section ────────────────────────────────────────────────────────
-function PhoneSection() {
-  const router = useRouter();
-  const [phone,    setPhone]   = useState("");
-  const [otp,      setOtp]     = useState("");
-  const [step,     setStep]    = useState<"input" | "otp">("input");
-  const [devOtp,   setDevOtp]  = useState("");
-  const [loading,  setLoading] = useState(false);
-
-  // +855 prefix is shown separately; strip leading 0 if user typed it
-  const fullPhone = () => "+855" + phone.trim().replace(/^0/, "").replace(/[\s\-]/g, "");
-
-  const sendOtp = async () => {
-    const num = phone.trim().replace(/^0/, "").replace(/[\s\-]/g, "");
-    if (num.length < 7) { toast.error("Enter a valid phone number."); return; }
-    setLoading(true);
-    try {
-      const res = await api.post("/auth/phone/send-otp", { phone: fullPhone() });
-      setStep("otp");
-      if (res.data.dev_otp) {
-        setDevOtp(res.data.dev_otp);
-      } else {
-        toast.success("Verification code sent to your phone.");
-      }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Failed to send OTP.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    if (otp.length !== 6) { toast.error("Enter the 6-digit code."); return; }
-    setLoading(true);
-    try {
-      const res = await api.post("/auth/phone/verify-otp", {
-        phone:   fullPhone(),
-        otp,
-        purpose: "register",
-      });
-      if (res.data.verified) {
-        toast.success("Phone verified! Fill in your details.");
-        router.push(`/register/complete?source=phone&phone=${encodeURIComponent(res.data.phone)}`);
-      }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Invalid code. Try again.");
-      setOtp("");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="border-2 rounded-2xl p-5 space-y-3 bg-muted/20">
-      <div className="flex items-center gap-2 text-sm font-semibold">
-        <Phone className="w-4 h-4 text-green-600" />
-        Sign up with Phone Number
-      </div>
-
-      {step === "input" ? (
-        <>
-          <div className="flex gap-2">
-            <div className="flex items-center gap-1 border-2 rounded-xl px-3 bg-background text-sm font-medium text-muted-foreground shrink-0">
-              🇰🇭 +855
-            </div>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="11 665 875"
-              className="flex-1 border-2 rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={sendOtp}
-            disabled={loading}
-            className="w-full py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Phone className="w-4 h-4" />}
-            {loading ? "Sending…" : "Confirm"}
-          </button>
-        </>
-      ) : (
-        <>
-          {devOtp ? (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3 text-center">
-              <p className="text-xs text-amber-700 dark:text-amber-400 font-medium mb-1">SMS not configured — your code is:</p>
-              <p className="text-2xl font-black tracking-widest text-amber-800 dark:text-amber-300">{devOtp}</p>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center">
-              Enter the 6-digit code sent to <strong>+855 {phone.replace(/^0/, "")}</strong>
-            </p>
-          )}
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-            placeholder="• • • • • •"
-            className="w-full border-2 rounded-xl px-4 py-3 text-sm bg-background text-center tracking-[0.5em] font-mono text-xl focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500"
-          />
-          <button
-            type="button"
-            onClick={verifyOtp}
-            disabled={loading || otp.length !== 6}
-            className="w-full py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 transition disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-            {loading ? "Verifying…" : "Verify"}
-          </button>
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <button type="button" onClick={() => { setStep("input"); setOtp(""); }}
-              className="hover:text-foreground transition">← Change number</button>
-            <button type="button" onClick={sendOtp} disabled={loading}
-              className="hover:text-foreground transition disabled:opacity-50">Resend code</button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Root export ──────────────────────────────────────────────────────────────
 export default function RegisterForm() {
+  const router = useRouter();
+
   return (
     <div className="space-y-4">
-      {/* Phone */}
-      <PhoneSection />
-
-      {/* Divider */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 border-t" />
-        <span className="text-xs text-muted-foreground font-medium">or</span>
-        <div className="flex-1 border-t" />
-      </div>
-
       {/* Google */}
       <button
         type="button"
@@ -168,7 +29,22 @@ export default function RegisterForm() {
         <GoogleIcon /> Continue with Google
       </button>
 
-      {/* Terms */}
+      {/* Divider */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 border-t" />
+        <span className="text-xs text-muted-foreground font-medium">or</span>
+        <div className="flex-1 border-t" />
+      </div>
+
+      {/* Phone — navigate to separate page */}
+      <button
+        type="button"
+        onClick={() => router.push("/register/phone")}
+        className="w-full flex items-center justify-center gap-3 py-3.5 px-4 border-2 rounded-xl font-semibold text-sm hover:bg-muted transition"
+      >
+        <Phone className="w-5 h-5 text-green-600" /> Sign up with Phone Number
+      </button>
+
       <p className="text-center text-xs text-muted-foreground pt-1">
         By signing up you agree to our{" "}
         <Link href="/terms" className="underline hover:text-foreground">Terms</Link> and{" "}
