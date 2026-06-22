@@ -42,7 +42,7 @@ export default function LoginForm() {
   const [sending, setSending] = useState(false);
   const [showPhone, setShowPhone] = useState(false);
 
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
@@ -236,32 +236,6 @@ export default function LoginForm() {
         No account?{" "}
         <Link href="/register" className="text-primary font-semibold hover:underline">Create one free</Link>
       </p>
-
-      {/* Demo credentials */}
-      <div className="p-4 bg-muted/50 rounded-xl border border-dashed text-xs space-y-2">
-        <p className="font-semibold text-muted-foreground">Demo Accounts</p>
-        <div className="space-y-1.5">
-          {[
-            { role: "Admin",    user: "admin@marketplacehub.com", pw: "Admin@2024" },
-            { role: "Vendor",   user: "vendor@demo.com",          pw: "Demo@2024" },
-            { role: "Customer", user: "customer@demo.com",        pw: "Demo@2024" },
-          ].map(({ role, user, pw }) => (
-            <div key={role} className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-muted-foreground w-14 shrink-0">{role}:</span>
-              <button
-                type="button"
-                onClick={() => { setValue("identifier", user); setValue("password", pw); }}
-                className="text-primary hover:underline font-mono"
-              >
-                {user}
-              </button>
-              <span className="text-muted-foreground">/</span>
-              <code>{pw}</code>
-            </div>
-          ))}
-        </div>
-        <p className="text-muted-foreground/70 pt-1">Click an email above to auto-fill the form.</p>
-      </div>
     </div>
   );
 }
