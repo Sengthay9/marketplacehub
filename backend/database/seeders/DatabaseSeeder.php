@@ -12,9 +12,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // ── Admin ──────────────────────────────────────────────────────────────
-        $admin = User::firstOrCreate(['email' => 'admin@marketplacehub.com'], [
+        $admin = User::firstOrCreate(['email' => 'admin@camcart.com'], [
             'name'           => 'Platform Admin',
-            'username'       => 'admin',
+            'username'       => 'admin@camcart',
             'password'       => Hash::make('Admin@2024'),
             'role'           => 'admin',
             'is_super_admin' => true,
@@ -22,9 +22,10 @@ class DatabaseSeeder extends Seeder
             'email_verified_at' => now(),
         ]);
 
-        if (!$admin->is_super_admin) {
-            $admin->update(['is_super_admin' => true]);
-        }
+        $admin->update([
+            'is_super_admin' => true,
+            'username'       => 'admin@camcart',
+        ]);
 
         // ── Categories ────────────────────────────────────────────────────────
         $categories = [

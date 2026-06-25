@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ShopCommission extends Model
 {
     protected $fillable = [
-        'shop_id', 'year', 'month', 'cycle', 'period_start', 'period_end',
+        'shop_id', 'order_id', 'year', 'month', 'cycle', 'period_start', 'period_end',
         'gross_revenue', 'commission_rate', 'commission_amount',
         'status', 'paid_at', 'invoice_sent_at', 'invoice_number',
     ];

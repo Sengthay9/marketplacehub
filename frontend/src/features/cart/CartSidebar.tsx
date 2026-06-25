@@ -58,7 +58,7 @@ export default function CartSidebar() {
                   {/* Image */}
                   <div className="w-16 h-16 bg-muted rounded-lg overflow-hidden shrink-0">
                     {image
-                      ? <Image src={image.url} alt={item.product?.name ?? ""} width={64} height={64} className="object-cover w-full h-full" />
+                      ? <Image src={image.url} alt={item.product?.name ?? ""} width={64} height={64} className="object-cover w-full h-full" unoptimized />
                       : <div className="w-full h-full flex items-center justify-center">
                           <Package className="w-6 h-6 text-muted-foreground/30" />
                         </div>

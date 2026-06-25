@@ -43,7 +43,7 @@ export const orderService = {
     return res.data as PaginatedResponse<Order>;
   },
 
-  async vendorUpdateStatus(id: number, action: "confirm" | "ship" | "deliver", data: Record<string, unknown> = {}) {
+  async vendorUpdateStatus(id: number, action: "confirm" | "deliver", data: Record<string, unknown> = {}) {
     const res = await api.post(`/vendor/orders/${id}/${action}`, data);
     return res.data.order as Order;
   },

@@ -22,7 +22,6 @@ class AnalyticsService
             'total_orders'      => Order::count(),
             'pending_orders'    => Order::where('status', 'pending')->count(),
             'active_shops'      => Shop::where('status', 'approved')->count(),
-            'pending_shops'     => Shop::where('status', 'pending')->count(),
             'total_customers'   => User::where('role', 'customer')->count(),
             'total_products'    => Product::where('status', 'published')->count(),
             'pending_products'  => Product::where('status', 'pending')->count(),

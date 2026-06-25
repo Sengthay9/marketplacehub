@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/axios";
 import Link from "next/link";
+import SiteLogo from "@/components/SiteLogo";
 
 export default function PhoneRegisterPage() {
   const router = useRouter();
@@ -60,7 +61,7 @@ export default function PhoneRegisterPage() {
         </Link>
 
         <div className="text-center mb-6">
-          <Link href="/" className="text-2xl font-black text-primary mb-1 block">🛍️ MarketplaceHub</Link>
+          <Link href="/" className="mb-1 inline-block"><SiteLogo size={28} textClassName="text-2xl text-primary" /></Link>
           <h2 className="text-xl font-bold mt-2">
             {step === "input" ? "Verify Your Phone" : "Enter Your Code"}
           </h2>

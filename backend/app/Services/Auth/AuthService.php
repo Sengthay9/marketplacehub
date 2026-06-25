@@ -18,7 +18,7 @@ class AuthService
         $user = User::create([
             'name'           => $data['name'],
             'username'       => $data['username'],
-            'email'          => $data['email'],
+            'email'          => $data['email'] ?? null,
             'password'       => $data['password'],
             'phone'          => $data['phone'] ?? null,
             'role'           => $data['role'] ?? 'customer',
@@ -31,17 +31,14 @@ class AuthService
         }
 
         $user->notify(new WelcomeNotification());
-        $user->notify(new VerifyEmailNotification());
 
         AuditLog::record('auth:register', [
             'user_id'    => $user->id,
-            'new_values' => ['email' => $user->email, 'role' => $user->role],
+            'new_values' => ['username' => $user->username, 'role' => $user->role],
         ]);
 
         return [
-            'message'         => 'Account created. Please check your email to verify your account.',
-            'email_sent_to'   => $user->email,
-            'requires_verify' => true,
+            'message' => 'Account created successfully.',
         ];
     }
 
@@ -49,8 +46,7 @@ class AuthService
     {
         // Check soft-deleted users too so we can give a proper ban message
         $user = User::withTrashed()
-                    ->where('email', $identifier)
-                    ->orWhere(fn ($q) => $q->where('username', $identifier))
+                    ->where('username', $identifier)
                     ->orWhere(fn ($q) => $q->where('phone', $identifier))
                     ->first();
 
@@ -75,6 +71,18 @@ class AuthService
                 ? 'Your account has been permanently banned. Reason: ' . ($user->ban_reason ?? 'violation of terms.')
                 : 'Your account is suspended until ' . ($user->banned_until?->toDateString() ?? 'further notice') . '. Reason: ' . ($user->ban_reason ?? 'violation of terms.');
             throw ValidationException::withMessages(['email' => [$message]]);
+        }
+
+        // Block vendors that have not been approved yet
+        if ($user->role === 'vendor' && $user->vendor_status !== 'approved') {
+            $msg = match ($user->vendor_status) {
+                'pending'  => 'Your vendor application is pending review. You will be notified once approved.',
+                'rejected' => 'Your vendor application was rejected. Please contact support.',
+                'suspended'=> 'Your vendor account has been suspended.',
+                'banned'   => 'Your vendor account has been banned.',
+                default    => 'Your vendor account is not active.',
+            };
+            throw ValidationException::withMessages(['email' => [$msg]]);
         }
 
         $user->update([
@@ -117,11 +125,12 @@ class AuthService
             'avatar'           => $user->avatar,
             'role'             => $user->role,
             'email_verified'   => $user->email_verified,
-            'has_two_factor'   => $user->hasTwoFactor(),
-            'last_login_at'    => $user->last_login_at,
-            'last_login_ip'    => $user->last_login_ip,
-            'shop'             => $user->relationLoaded('shop') ? $user->shop : null,
-            'created_at'       => $user->created_at,
+            'has_two_factor'        => $user->hasTwoFactor(),
+            'force_password_change' => (bool) $user->force_password_change,
+            'last_login_at'         => $user->last_login_at,
+            'last_login_ip'         => $user->last_login_ip,
+            'shop'                  => $user->relationLoaded('shop') ? $user->shop : null,
+            'created_at'            => $user->created_at,
         ];
     }
 }

@@ -65,7 +65,7 @@
 
   {{-- Header --}}
   <div class="header">
-    <div class="brand">🛍️ MarketplaceHub</div>
+    <div class="brand">🛍️ CamCart</div>
     <div class="badge">Commission Invoice</div>
   </div>
 
@@ -93,9 +93,9 @@
   <div class="parties">
     <div class="party">
       <div class="party-label">From (Platform)</div>
-      <div class="party-name">MarketplaceHub</div>
+      <div class="party-name">CamCart</div>
       <div class="party-info">
-        noreply@marketplacehub.com<br>
+        noreply@camcart.com<br>
         {{ env('FRONTEND_URL', 'http://localhost') }}
       </div>
     </div>
@@ -171,15 +171,15 @@
   <div class="due-banner">
     <strong>Payment due by {{ $dueDate }}.</strong>
     Please transfer the commission amount to the platform account.
-    Contact <a href="mailto:noreply@marketplacehub.com">noreply@marketplacehub.com</a> for payment instructions.
+    Contact <a href="mailto:noreply@camcart.com">noreply@camcart.com</a> for payment instructions.
   </div>
   @endif
 
   {{-- Footer --}}
   <div class="footer">
     <p>
-      This invoice was generated automatically by MarketplaceHub.<br>
-      Questions? Contact us at <a href="mailto:noreply@marketplacehub.com">noreply@marketplacehub.com</a>
+      This invoice was generated automatically by CamCart.<br>
+      Questions? Contact us at <a href="mailto:noreply@camcart.com">noreply@camcart.com</a>
     </p>
   </div>
 

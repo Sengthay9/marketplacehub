@@ -74,14 +74,14 @@ export default function FeaturedShops() {
               <Link
                 key={shop.id}
                 href={`/shops/${shop.slug}`}
-                className="group bg-card border rounded-2xl overflow-hidden hover:shadow-lg transition-shadow flex flex-col"
+                className="group bg-card border rounded-2xl hover:shadow-lg transition-shadow flex flex-col"
               >
                 {/* Banner */}
-                <div className="h-40 bg-gradient-to-r from-primary/20 to-blue-500/20 relative shrink-0">
+                <div className="h-40 bg-gradient-to-r from-primary/20 to-blue-500/20 relative shrink-0 rounded-t-2xl overflow-hidden">
                   {shop.banner && <ShopBanner src={shop.banner} />}
                 </div>
                 <div className="p-5 -mt-8 flex flex-col flex-1">
-                  <div className="w-16 h-16 bg-card border-2 border-background rounded-2xl overflow-hidden mb-3 shadow-sm">
+                  <div className="w-16 h-16 bg-card border-2 border-background rounded-2xl overflow-hidden mb-3 shadow-sm z-10 relative">
                     {shop.logo
                       ? <ShopLogo src={shop.logo} alt={shop.name} size={64} />
                       : <div className="w-full h-full bg-primary/10 flex items-center justify-center">

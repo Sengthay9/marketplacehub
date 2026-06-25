@@ -12,10 +12,10 @@ class RegisterRequest extends FormRequest
     {
         return [
             'name'     => 'required|string|min:2|max:100',
-            'username' => 'required|string|min:3|max:30|regex:/^[a-zA-Z0-9_]+$/|unique:users,username',
-            'email'    => 'required|email|unique:users,email',
+            'username' => 'required|string|min:3|max:30|alpha_dash|unique:users,username',
+            'email'    => 'nullable|email|unique:users,email',
             'password' => 'required|string|min:8|confirmed',
-            'phone'    => 'nullable|string|max:20',
+            'phone'    => 'required|string|max:20',
             'role'     => 'nullable|in:customer,vendor',
         ];
     }

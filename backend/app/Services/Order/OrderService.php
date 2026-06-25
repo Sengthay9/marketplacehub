@@ -17,6 +17,16 @@ class OrderService
 {
     public function __construct(private readonly CouponService $couponService) {}
 
+    private function platformFeeRate(float $amount): float
+    {
+        return match (true) {
+            $amount <= 50  => 0.05,
+            $amount <= 150 => 0.08,
+            $amount <= 300 => 0.10,
+            default        => 0.15,
+        };
+    }
+
     public function calculateSummary(int $userId, ?string $couponCode = null): array
     {
         $cart = Cart::with(['items.product', 'items.variant'])
@@ -27,31 +37,25 @@ class OrderService
             throw ValidationException::withMessages(['cart' => 'Cart is empty.']);
         }
 
-        // Group by shop (multi-vendor)
-        $shopGroups = $cart->items->groupBy(fn ($i) => $i->product->shop_id);
+        $subtotal    = $cart->items->sum(fn ($i) => $i->unit_price * $i->quantity);
+        $cartShopId  = $cart->items->first()?->product->shop_id;
 
-        $subtotal  = $cart->items->sum(fn ($i) => $i->unit_price * $i->quantity);
-        $shippingFee = count($shopGroups) * 2.00; // $2 per shop
-        $taxRate     = 0.005;
-        $taxAmount   = round($subtotal * $taxRate, 2);
-
-        $discount   = 0.0;
-        $coupon     = null;
+        $discount = 0.0;
+        $coupon   = null;
 
         if ($couponCode) {
-            $coupon   = $this->couponService->validate($couponCode, $userId, $subtotal);
+            $coupon   = $this->couponService->validate($couponCode, $userId, $subtotal, $cartShopId);
             $discount = $coupon->calculateDiscount($subtotal);
         }
 
-        $total = round($subtotal + $shippingFee + $taxAmount - $discount, 2);
+        $total = round($subtotal - $discount, 2);
 
         return [
-            'subtotal'     => $subtotal,
-            'shipping_fee' => $shippingFee,
-            'tax_amount'   => $taxAmount,
-            'discount'     => $discount,
-            'total'        => $total,
-            'coupon'       => $coupon,
+            'subtotal'   => $subtotal,
+            'tax_amount' => 0,
+            'discount'   => $discount,
+            'total'      => $total,
+            'coupon'     => $coupon,
         ];
     }
 
@@ -74,7 +78,11 @@ class OrderService
 
             foreach ($shopGroups as $shopId => $items) {
                 $shopSubtotal = $items->sum(fn ($i) => $i->unit_price * $i->quantity);
-                $shopTax      = round($shopSubtotal * 0.10, 2);
+                $shopDiscount = count($shopGroups) === 1 ? $summary['discount'] : 0;
+                $shopTotal    = round($shopSubtotal - $shopDiscount, 2);
+
+                // Tiered fee silently recorded — deducted from vendor payout, invisible to customer
+                $shopPlatformFee = round($shopTotal * $this->platformFeeRate($shopTotal), 2);
 
                 $order = Order::create([
                     'user_id'         => $userId,
@@ -82,10 +90,10 @@ class OrderService
                     'address_id'      => $data['address_id'],
                     'coupon_id'       => $summary['coupon']?->id,
                     'subtotal'        => $shopSubtotal,
-                    'discount_amount' => count($shopGroups) === 1 ? $summary['discount'] : 0,
-                    'tax_amount'      => $shopTax,
-                    'shipping_fee'    => 2.00,
-                    'total'           => round($shopSubtotal + $shopTax + 2.00 - (count($shopGroups) === 1 ? $summary['discount'] : 0), 2),
+                    'discount_amount' => $shopDiscount,
+                    'tax_amount'      => 0,
+                    'platform_fee'    => $shopPlatformFee,
+                    'total'           => $shopTotal,
                     'notes'           => $data['notes'] ?? null,
                 ]);
 
@@ -107,6 +115,12 @@ class OrderService
                     }
                     $cartItem->product->decrement('stock_quantity', $cartItem->quantity);
                     $cartItem->product->increment('sold_count', $cartItem->quantity);
+
+                    // Auto-deactivate when stock runs out
+                    $cartItem->product->refresh();
+                    if ($cartItem->product->stock_quantity <= 0 && $cartItem->product->status === 'active') {
+                        $cartItem->product->update(['status' => 'inactive', 'stock_quantity' => 0]);
+                    }
                 }
 
                 Payment::create([
@@ -137,8 +151,7 @@ class OrderService
         $allowed = [
             'confirmed'  => ['pending'],
             'processing' => ['confirmed'],
-            'shipped'    => ['processing'],
-            'delivered'  => ['shipped'],
+            'delivered'  => ['confirmed', 'processing'],
             'cancelled'  => ['pending', 'confirmed'],
         ];
 
@@ -150,7 +163,6 @@ class OrderService
 
         $timestamps = [
             'confirmed'  => 'confirmed_at',
-            'shipped'    => 'shipped_at',
             'delivered'  => 'delivered_at',
             'cancelled'  => 'cancelled_at',
         ];

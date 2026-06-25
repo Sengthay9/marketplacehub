@@ -261,7 +261,7 @@ export default function CustomerAccount() {
             </form>
           ) : (
             <div className="space-y-3 text-sm">
-              {[["Name", me?.name], ["Email", me?.email], ["Phone", me?.phone || "—"]].map(([label, val]) => (
+              {[["Name", me?.name], ["Username", me?.email], ["Phone", me?.phone || "—"]].map(([label, val]) => (
                 <div key={label} className="flex justify-between py-1 border-b last:border-0">
                   <span className="text-muted-foreground">{label}</span>
                   <span className="font-medium">{val ?? "—"}</span>

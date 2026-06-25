@@ -5,55 +5,65 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\VendorKyc;
-use App\Models\Wishlist;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class VendorKycController extends Controller
 {
+    // POST /auth/vendor/register
     public function register(Request $request): JsonResponse
     {
         $request->validate([
-            'email'          => 'required|email|unique:users,email',
-            'full_name'      => 'required|string|min:2|max:100',
-            'date_of_birth'  => 'required|date|before:-18 years',
-            'gender'         => 'required|in:male,female,other',
-            'id_number'      => 'required|string|unique:vendor_kyc,id_number',
-            'address'        => 'required|string|max:255',
-            'city'           => 'required|string|max:100',
-            'province'       => 'nullable|string|max:100',
-            'id_card_front'  => 'required|string',
-            'id_card_back'   => 'required|string',
-            'selfie_with_id' => 'nullable|string',
+            'first_name'   => 'required|string|max:100',
+            'last_name'    => 'required|string|max:100',
+            'email'        => 'required|email|unique:users,email',
+            'phone'        => 'required|string|max:20',
+            'date_of_birth'=> 'required|date',
+            'gender'       => 'required|in:male,female,other',
+            'address'      => 'required|string|max:500',
+            'city'         => 'nullable|string|max:100',
+            'province'     => 'nullable|string|max:100',
+            'purpose'      => 'required|string|max:1000',
+            'id_card_front'=> 'required|image|max:5120',
+            'id_card_back' => 'required|image|max:5120',
+            'selfie_with_id'=> 'required|image|max:5120',
         ]);
 
-        // Create the user account with role=vendor and no password (admin will set it on approval)
+        $fullName = trim($request->first_name . ' ' . $request->last_name);
+
+        // Create user with no username/password — set on approval
         $user = User::create([
-            'name'           => $request->full_name,
-            'email'          => $request->email,
-            'password'       => \Str::random(32), // random password, will be reset on approval
-            'role'           => 'vendor',
-            'email_verified' => false,
+            'name'          => $fullName,
+            'email'         => $request->email,
+            'phone'         => $request->phone,
+            'password'      => \Illuminate\Support\Str::random(32),
+            'role'          => 'vendor',
+            'vendor_status' => 'pending',
+            'email_verified'=> false,
         ]);
+
+        // Store uploaded documents
+        $front   = $request->file('id_card_front')->store('kyc/ids', 'public');
+        $back    = $request->file('id_card_back')->store('kyc/ids', 'public');
+        $selfie  = $request->file('selfie_with_id')->store('kyc/selfies', 'public');
 
         VendorKyc::create([
             'user_id'       => $user->id,
-            'full_name'     => $request->full_name,
+            'full_name'     => $fullName,
             'date_of_birth' => $request->date_of_birth,
             'gender'        => $request->gender,
-            'id_number'     => $request->id_number,
             'address'       => $request->address,
             'city'          => $request->city,
             'province'      => $request->province,
-            'id_card_front' => $request->id_card_front,
-            'id_card_back'  => $request->id_card_back,
-            'selfie_with_id'=> $request->selfie_with_id,
-            'status'        => 'pending',
+            'purpose'       => $request->purpose,
+            'id_card_front' => '/storage/' . $front,
+            'id_card_back'  => '/storage/' . $back,
+            'selfie_with_id'=> '/storage/' . $selfie,
         ]);
 
         return response()->json([
-            'message' => 'Your vendor application has been submitted. We will review your documents and contact you by email within 1-3 business days.',
+            'message' => 'Your vendor application has been submitted and is under review. You will receive an email with your login credentials once approved.',
         ], 201);
     }
 }

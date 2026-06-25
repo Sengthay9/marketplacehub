@@ -16,12 +16,17 @@ class AdminProductController extends Controller
     {
         $status = $request->input('status');
 
-        $products = Product::with(['shop:id,name', 'category:id,name'])
-            ->when($status, fn ($q, $s) => $q->where('status', $s))
-            // "New Products" tab: only show pending items from the last 3 days
-            ->when($status === 'pending', fn ($q) => $q->where('created_at', '>=', now()->subDays(3)))
+        $isNew = $request->boolean('new');
+
+        $products = Product::with(['shop:id,name', 'category:id,name', 'images'])
+            ->when($isNew, fn ($q) => $q->where('created_at', '>=', now()->subDays(3))->whereNotIn('status', ['suspended', 'banned']))
+            ->when(!$isNew && !$status, fn ($q) => $q->whereNotIn('status', ['suspended', 'banned']))
+            ->when(!$isNew && $status,  fn ($q) => $q->where('status', $status))
             ->when($request->input('q'), fn ($q, $search) =>
-                $q->where('name', 'ilike', "%$search%")->orWhere('sku', 'ilike', "%$search%")
+                $q->where(fn ($sub) => $sub
+                    ->where('name', 'ilike', "%$search%")
+                    ->orWhereHas('shop', fn ($sq) => $sq->where('name', 'ilike', "%$search%"))
+                )
             )
             ->latest()
             ->paginate(20);
@@ -38,11 +43,11 @@ class AdminProductController extends Controller
     public function approve(int $id): JsonResponse
     {
         $product = Product::with('shop.owner')->findOrFail($id);
-        $product->update(['status' => 'published', 'rejection_reason' => null]);
+        $product->update(['status' => 'active', 'rejection_reason' => null]);
 
         $this->notificationService->send($product->shop->owner, 'product_approved', [
             'title'   => 'Product Approved',
-            'message' => "Your product '{$product->name}' is now live on MarketplaceHub.",
+            'message' => "Your product '{$product->name}' is now live on CamCart.",
             'data'    => ['product_id' => $product->id],
         ]);
 
@@ -81,16 +86,19 @@ class AdminProductController extends Controller
 
     public function suspend(Request $request, int $id): JsonResponse
     {
-        $request->validate(['reason' => 'required|string|max:500']);
+        $request->validate(['reason' => 'required|string|max:500', 'days' => 'nullable|integer|min:1']);
         $product = Product::with('shop.owner')->findOrFail($id);
+        $days  = $request->input('days', 7);
+        $until = now()->addDays($days);
         $product->update([
-            'status'         => 'suspended',
-            'warning_reason' => $request->input('reason'),
+            'status'          => 'suspended',
+            'warning_reason'  => $request->input('reason'),
+            'suspended_until' => $until,
         ]);
 
         $this->notificationService->send($product->shop->owner, 'product_suspended', [
             'title'   => 'Product Suspended',
-            'message' => "'{$product->name}' has been suspended: " . $request->input('reason'),
+            'message' => "Your product '{$product->name}' has been suspended until {$until->toDateString()}. Reason: " . $request->input('reason') . ". The product will automatically become available again after the suspension ends.",
             'data'    => ['product_id' => $product->id],
         ]);
 
@@ -108,7 +116,7 @@ class AdminProductController extends Controller
 
         $this->notificationService->send($product->shop->owner, 'product_banned', [
             'title'   => 'Product Banned',
-            'message' => "'{$product->name}' has been permanently banned: " . $request->input('reason'),
+            'message' => "'{$product->name}' has been permanently banned and removed from the platform: " . $request->input('reason'),
             'data'    => ['product_id' => $product->id],
         ]);
 
@@ -119,17 +127,18 @@ class AdminProductController extends Controller
     {
         $product = Product::with('shop.owner')->findOrFail($id);
         $product->update([
-            'status'         => 'published',
-            'warning_reason' => null,
+            'status'          => 'active',
+            'warning_reason'  => null,
+            'suspended_until' => null,
         ]);
 
         $this->notificationService->send($product->shop->owner, 'product_restored', [
-            'title'   => 'Product Restored',
-            'message' => "'{$product->name}' has been restored and is now live again.",
+            'title'   => 'Product Suspension Lifted',
+            'message' => "'{$product->name}' suspension has been lifted. It is now active on the platform.",
             'data'    => ['product_id' => $product->id],
         ]);
 
-        return response()->json(['message' => 'Product restored to published.', 'product' => $product]);
+        return response()->json(['message' => 'Product suspension lifted.', 'product' => $product]);
     }
 
     public function destroy(int $id): JsonResponse

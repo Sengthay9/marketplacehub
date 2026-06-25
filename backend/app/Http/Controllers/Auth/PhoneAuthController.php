@@ -63,7 +63,7 @@ class PhoneAuthController extends Controller
                 $twilio = new TwilioClient($sid, $token);
                 $twilio->messages->create($phone, [
                     'from' => $from,
-                    'body' => "Your MarketplaceHub code: {$otp}. Expires in 5 minutes.",
+                    'body' => "Your CamCart code: {$otp}. Expires in 5 minutes.",
                 ]);
             } catch (\Exception $e) {
                 return response()->json(['message' => 'Failed to send SMS. Check your phone number.'], 500);
@@ -132,6 +132,79 @@ class PhoneAuthController extends Controller
             'message'  => 'Phone verified.',
             'verified' => true,
             'phone'    => $phone,
+        ]);
+    }
+
+    // POST /auth/phone/firebase — verify Firebase phone ID token, sign in or create account
+    public function firebaseLogin(Request $request): JsonResponse
+    {
+        $data = $request->validate(['id_token' => 'required|string']);
+
+        // Verify the Firebase ID token with Google's public key endpoint
+        $response = \Illuminate\Support\Facades\Http::get(
+            "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . config('services.firebase.api_key'),
+            []
+        );
+
+        // Decode the JWT to get phone number (without full verification for simplicity)
+        $parts   = explode('.', $data['id_token']);
+        if (count($parts) !== 3) {
+            return response()->json(['message' => 'Invalid token.'], 401);
+        }
+        $payload = json_decode(base64_decode(str_pad(strtr($parts[1], '-_', '+/'), strlen($parts[1]) % 4 === 0 ? 0 : 4 - strlen($parts[1]) % 4, '=')), true);
+
+        if (!$payload || empty($payload['phone_number'])) {
+            return response()->json(['message' => 'Could not extract phone number from token.'], 401);
+        }
+
+        // Verify token with Firebase REST API
+        $verify = \Illuminate\Support\Facades\Http::post(
+            "https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" . config('services.firebase.api_key'),
+            ['idToken' => $data['id_token']]
+        );
+
+        if (!$verify->ok() || empty($verify->json('users'))) {
+            return response()->json(['message' => 'Invalid or expired verification code.'], 401);
+        }
+
+        $phone = $this->normalize($payload['phone_number']);
+        $isNew = false;
+
+        $user = User::where('phone', $phone)->first();
+
+        if (!$user) {
+            $isNew    = true;
+            $phoneName = 'User ' . substr($phone, -4);
+            $user = User::create([
+                'name'           => $phoneName,
+                'username'       => User::generateUsername($phoneName),
+                'email'          => $username . '@phone.local',
+                'phone'          => $phone,
+                'password'       => str()->random(32),
+                'role'           => 'customer',
+                'email_verified' => false,
+            ]);
+
+            Cart::create(['user_id' => $user->id]);
+            Wishlist::create(['user_id' => $user->id]);
+        }
+
+        $user->tokens()->delete();
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message'          => $isNew ? 'Account created.' : 'Signed in.',
+            'token'            => $token,
+            'needs_onboarding' => $isNew,
+            'user'             => [
+                'id'             => $user->id,
+                'name'           => $user->name,
+                'email'          => $user->email,
+                'phone'          => $user->phone,
+                'avatar'         => $user->avatar,
+                'role'           => $user->role,
+                'email_verified' => $user->email_verified,
+            ],
         ]);
     }
 

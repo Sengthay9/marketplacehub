@@ -1,253 +1,429 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect } from "react";
+import { useForm } from "react-hook-form";
 import Link from "next/link";
-import { Upload, Check } from "lucide-react";
+import {
+  Loader2, CheckCircle, Upload, User, FileText, Camera, ClipboardList,
+} from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/axios";
 
-type Step = 1 | 2 | 3;
+// ── Cambodia city → province map ──────────────────────────────────────────────
+const CITY_PROVINCE: Record<string, string> = {
+  "Phnom Penh":    "Phnom Penh",
+  "Siem Reap":     "Siem Reap",
+  "Battambang":    "Battambang",
+  "Sihanoukville": "Preah Sihanouk",
+  "Kampot":        "Kampot",
+  "Kratié":        "Kratié",
+  "Stung Treng":   "Stung Treng",
+  "Banlung":       "Ratanakiri",
+  "Sen Monorom":   "Mondulkiri",
+  "Kampong Cham":  "Kampong Cham",
+  "Kampong Chhnang": "Kampong Chhnang",
+  "Chbar Mon":     "Kampong Speu",
+  "Stung Sen":     "Kampong Thom",
+  "Ta Khmau":      "Kandal",
+  "Koh Kong":      "Koh Kong",
+  "Prey Veng":     "Prey Veng",
+  "Svay Rieng":    "Svay Rieng",
+  "Takéo":         "Takéo",
+  "Pursat":        "Pursat",
+  "Suong":         "Tbong Khmum",
+  "Samraong":      "Oddar Meanchey",
+  "Preah Vihear":  "Preah Vihear",
+  "Pailin":        "Pailin",
+  "Kep":           "Kep",
+  "Sisophon":      "Banteay Meanchey",
+  "Poipet":        "Banteay Meanchey",
+};
 
-export default function VendorRegisterForm() {
-  const router = useRouter();
-  const [step, setStep] = useState<Step>(1);
-  const [loading, setLoading] = useState(false);
+const CAMBODIA_CITIES = Object.keys(CITY_PROVINCE).sort();
 
-  const [form, setForm] = useState({
-    email: "",
-    full_name: "",
-    date_of_birth: "",
-    gender: "",
-    id_number: "",
-    address: "",
-    city: "",
-    province: "",
-    id_card_front: "",
-    id_card_back: "",
-    selfie_with_id: "",
-  });
+// ── Step 1 fields ─────────────────────────────────────────────────────────────
+type Step1 = {
+  first_name:    string;
+  last_name:     string;
+  phone:         string;
+  date_of_birth: string;
+  gender:        "male" | "female" | "other";
+  address:       string;
+  city:          string;
+  province:      string;
+  purpose:       string;
+};
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }));
+const STEPS = [
+  { icon: User,         label: "Personal Info" },
+  { icon: FileText,     label: "ID Card" },
+  { icon: Camera,       label: "Selfie" },
+  { icon: ClipboardList, label: "Review" },
+];
 
-  const inputClass = "w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30";
+const inputCls =
+  "w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
 
-  // Mock file upload → in production, upload to server and store URL
-  const handleFileUpload = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // In production, upload to storage and get URL. For now, use object URL as placeholder.
-    const url = URL.createObjectURL(file);
-    setForm((f) => ({ ...f, [key]: url }));
-    toast.success(`${key.replace(/_/g, " ")} uploaded.`);
-  };
-
-  const FileField = ({ field, label }: { field: keyof typeof form; label: string }) => (
+function ImageUploadBox({
+  label, file, onFile,
+}: { label: string; file: File | null; onFile: (f: File) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
     <div>
-      <label className="block text-sm font-medium mb-1">{label}</label>
-      <label className={`${inputClass} flex items-center gap-3 cursor-pointer hover:bg-muted/50 transition`}>
-        <Upload className="w-4 h-4 text-muted-foreground shrink-0" />
-        <span className="text-muted-foreground text-sm flex-1 truncate">
-          {form[field] ? "File selected ✓" : "Click to upload photo"}
-        </span>
-        {form[field] && <Check className="w-4 h-4 text-green-500 shrink-0" />}
-        <input type="file" accept="image/*" className="sr-only" onChange={handleFileUpload(field)} />
-      </label>
+      <label className="block text-sm font-semibold mb-1">{label}</label>
+      <div
+        onClick={() => ref.current?.click()}
+        className="border-2 border-dashed rounded-xl h-36 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-primary hover:bg-primary/5 transition"
+      >
+        {file ? (
+          <img
+            src={URL.createObjectURL(file)}
+            alt={label}
+            className="h-full w-full object-cover rounded-xl"
+          />
+        ) : (
+          <>
+            <Upload className="w-6 h-6 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">Click to upload</p>
+          </>
+        )}
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+      />
     </div>
   );
+}
 
-  const submit = async () => {
+export default function VendorRegisterForm() {
+  const [step, setStep]             = useState(0);
+  const [loading, setLoading]       = useState(false);
+  const [done, setDone]             = useState(false);
+  const [step1Data, setStep1Data]   = useState<Step1 | null>(null);
+  const [idFront, setIdFront]       = useState<File | null>(null);
+  const [idBack, setIdBack]         = useState<File | null>(null);
+  const [selfie, setSelfie]         = useState<File | null>(null);
+
+  const { register, handleSubmit, watch, setValue, getValues, formState: { errors } } =
+    useForm<Step1>();
+
+  const selectedCity = watch("city");
+  useEffect(() => {
+    if (selectedCity && CITY_PROVINCE[selectedCity]) {
+      setValue("province", CITY_PROVINCE[selectedCity]);
+    }
+  }, [selectedCity, setValue]);
+
+  // ── Step 1 submit ────────────────────────────────────────────────────────────
+  const onStep1 = (data: Step1) => {
+    setStep1Data(data);
+    setStep(1);
+  };
+
+  // ── Step 2 next ──────────────────────────────────────────────────────────────
+  const onStep2Next = () => {
+    if (!idFront || !idBack) {
+      toast.error("Please upload both sides of your ID card.");
+      return;
+    }
+    setStep(2);
+  };
+
+  // ── Step 3 next ──────────────────────────────────────────────────────────────
+  const onStep3Next = () => {
+    if (!selfie) {
+      toast.error("Please upload your selfie with ID.");
+      return;
+    }
+    setStep(3);
+  };
+
+  // ── Step 4 submit ─────────────────────────────────────────────────────────────
+  const onSubmit = async () => {
+    if (!step1Data || !idFront || !idBack || !selfie) return;
     setLoading(true);
     try {
-      await api.post("/auth/vendor/register", form);
-      router.push("/vendor-application-submitted");
+      const form = new FormData();
+      Object.entries(step1Data).forEach(([k, v]) => form.append(k, v as string));
+      form.append("id_card_front",  idFront);
+      form.append("id_card_back",   idBack);
+      form.append("selfie_with_id", selfie);
+
+      await api.post("/auth/vendor/register", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setDone(true);
     } catch (err: any) {
-      const errors = err?.response?.data?.errors;
-      if (errors) {
-        const first = Object.values(errors)[0] as string[];
-        toast.error(first[0]);
-      } else {
-        toast.error(err?.response?.data?.message ?? "Submission failed.");
-      }
+      const msg = err?.response?.data?.message ?? "Submission failed. Please try again.";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const steps = ["Personal Info", "ID Documents", "Review & Submit"];
-
-  return (
-    <div className="max-w-lg w-full">
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8">
-        {steps.map((label, i) => (
-          <div key={i} className="flex items-center gap-2 flex-1">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-              i + 1 < step ? "bg-green-500 text-white" :
-              i + 1 === step ? "bg-primary text-white" : "bg-muted text-muted-foreground"
-            }`}>
-              {i + 1 < step ? <Check className="w-4 h-4" /> : i + 1}
-            </div>
-            <span className={`text-xs font-medium hidden sm:block ${i + 1 === step ? "text-foreground" : "text-muted-foreground"}`}>
-              {label}
-            </span>
-            {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i + 1 < step ? "bg-green-500" : "bg-muted"}`} />}
-          </div>
-        ))}
+  // ── Success screen ────────────────────────────────────────────────────────────
+  if (done) {
+    return (
+      <div className="text-center py-4 space-y-4">
+        <div className="flex justify-center">
+          <CheckCircle className="w-14 h-14 text-green-500" />
+        </div>
+        <h3 className="text-lg font-bold">Application submitted!</h3>
+        <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+          Our team will review your documents. Once approved, you will be able to sign in with your username.
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Review usually takes 1–3 business days.
+        </p>
+        <Link
+          href="/login"
+          className="block w-full py-3 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition"
+        >
+          Go to Sign In
+        </Link>
       </div>
+    );
+  }
 
-      {/* Step 1 — Personal Info */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-bold">Personal Information</h2>
-          <p className="text-sm text-muted-foreground">This must match your government-issued ID card exactly.</p>
+  // ── Step indicator ────────────────────────────────────────────────────────────
+  const StepBar = () => (
+    <div className="flex items-center justify-between mb-6">
+      {STEPS.map((s, i) => {
+        const Icon = s.icon;
+        const active = i === step;
+        const done   = i < step;
+        return (
+          <div key={i} className="flex flex-col items-center flex-1">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition ${
+                done   ? "bg-green-500 text-white" :
+                active ? "bg-primary text-white" :
+                         "bg-muted text-muted-foreground"
+              }`}
+            >
+              {done ? <CheckCircle className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+            </div>
+            <p className={`text-xs mt-1 ${active ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+              {s.label}
+            </p>
+            {i < STEPS.length - 1 && (
+              <div className={`absolute hidden`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Full Name (as on ID)</label>
-            <input type="text" value={form.full_name} onChange={set("full_name")} className={inputClass} placeholder="Full legal name" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Email Address</label>
-            <input type="email" value={form.email} onChange={set("email")} className={inputClass} placeholder="your@email.com" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+  // ── Step 1: Personal Info ─────────────────────────────────────────────────────
+  if (step === 0) {
+    return (
+      <div className="space-y-4">
+        <StepBar />
+        <form onSubmit={handleSubmit(onStep1)} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Date of Birth</label>
-              <input type="date" value={form.date_of_birth} onChange={set("date_of_birth")} className={inputClass} />
+              <label className="block text-sm font-semibold mb-1">First Name</label>
+              <input {...register("first_name", { required: "Required" })} placeholder="John" className={inputCls} />
+              {errors.first_name && <p className="text-xs text-red-500 mt-1">{errors.first_name.message}</p>}
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Gender</label>
-              <select value={form.gender} onChange={set("gender")} className={inputClass}>
-                <option value="">Select…</option>
+              <label className="block text-sm font-semibold mb-1">Last Name</label>
+              <input {...register("last_name", { required: "Required" })} placeholder="Doe" className={inputCls} />
+              {errors.last_name && <p className="text-xs text-red-500 mt-1">{errors.last_name.message}</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-1">Phone Number</label>
+            <input type="tel" {...register("phone", { required: "Required" })} placeholder="+855 12 345 678" className={inputCls} />
+            {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold mb-1">Date of Birth</label>
+              <input type="date" {...register("date_of_birth", { required: "Required" })} className={inputCls} />
+              {errors.date_of_birth && <p className="text-xs text-red-500 mt-1">{errors.date_of_birth.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1">Gender</label>
+              <select {...register("gender", { required: "Required" })} className={inputCls}>
+                <option value="">Select</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
                 <option value="other">Other</option>
               </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">National ID Number</label>
-            <input type="text" value={form.id_number} onChange={set("id_number")} className={inputClass} placeholder="ID card number" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Address</label>
-            <textarea value={form.address} onChange={set("address")} rows={2} className={inputClass} placeholder="Street address" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">City</label>
-              <input type="text" value={form.city} onChange={set("city")} className={inputClass} placeholder="City" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Province (optional)</label>
-              <input type="text" value={form.province} onChange={set("province")} className={inputClass} placeholder="Province" />
+              {errors.gender && <p className="text-xs text-red-500 mt-1">{errors.gender.message}</p>}
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              if (!form.full_name || !form.email || !form.date_of_birth || !form.gender || !form.id_number || !form.address || !form.city) {
-                toast.error("Please fill in all required fields.");
-                return;
-              }
-              setStep(2);
-            }}
-            className="w-full py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition"
-          >
-            Continue to Documents →
+          <div>
+            <label className="block text-sm font-semibold mb-1">Address</label>
+            <input {...register("address", { required: "Required" })} placeholder="Street / Village / Commune" className={inputCls} />
+            {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold mb-1">City</label>
+              <select {...register("city", { required: "Required" })} className={inputCls}>
+                <option value="">Select city…</option>
+                {CAMBODIA_CITIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              {errors.city && <p className="text-xs text-red-500 mt-1">{errors.city.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold mb-1">Province</label>
+              <select
+                {...register("province", { required: "Required" })}
+                disabled={!selectedCity}
+                className={inputCls + (!selectedCity ? " opacity-50 cursor-not-allowed" : "")}
+              >
+                <option value="">
+                  {selectedCity ? CITY_PROVINCE[selectedCity] ?? "Select province…" : "Select city first"}
+                </option>
+                {selectedCity && CITY_PROVINCE[selectedCity] && (
+                  <option value={CITY_PROVINCE[selectedCity]}>{CITY_PROVINCE[selectedCity]}</option>
+                )}
+              </select>
+              {errors.province && <p className="text-xs text-red-500 mt-1">{errors.province.message}</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-1">Business Purpose</label>
+            <textarea
+              {...register("purpose", { required: "Required" })}
+              rows={2}
+              placeholder="What will you sell on CamCart?"
+              className={inputCls + " resize-none"}
+            />
+            {errors.purpose && <p className="text-xs text-red-500 mt-1">{errors.purpose.message}</p>}
+          </div>
+
+          <button type="submit" className="w-full py-3 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary/90 transition">
+            Next: Upload ID →
           </button>
+        </form>
 
-          <p className="text-center text-sm text-muted-foreground">
-            Already have a vendor account?{" "}
-            <Link href="/login" className="text-primary font-medium hover:underline">Sign in</Link>
-          </p>
+        <p className="text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <Link href="/login" className="text-primary font-semibold hover:underline">Sign in</Link>
+        </p>
+      </div>
+    );
+  }
+
+  // ── Step 2: ID Card ───────────────────────────────────────────────────────────
+  if (step === 1) {
+    return (
+      <div className="space-y-4">
+        <StepBar />
+        <p className="text-sm text-muted-foreground">Upload a clear photo of your National ID card.</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <ImageUploadBox label="ID Front" file={idFront} onFile={setIdFront} />
+          <ImageUploadBox label="ID Back"  file={idBack}  onFile={setIdBack}  />
         </div>
-      )}
 
-      {/* Step 2 — Documents */}
-      {step === 2 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-bold">ID Card Documents</h2>
-          <p className="text-sm text-muted-foreground">Upload clear photos of your National ID card. Documents are encrypted and only reviewed by our team.</p>
-
-          <FileField field="id_card_front" label="ID Card — Front Side *" />
-          <FileField field="id_card_back"  label="ID Card — Back Side *" />
-          <FileField field="selfie_with_id" label="Selfie holding your ID (optional)" />
-
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
-            <strong>Requirements:</strong> Clear, unobstructed photo. All 4 corners must be visible. No filters or edits.
-          </div>
-
-          <div className="flex gap-3">
-            <button onClick={() => setStep(1)} className="flex-1 py-3 border rounded-xl font-semibold hover:bg-muted transition">
-              ← Back
-            </button>
-            <button
-              onClick={() => {
-                if (!form.id_card_front || !form.id_card_back) {
-                  toast.error("Please upload both front and back of your ID card.");
-                  return;
-                }
-                setStep(3);
-              }}
-              className="flex-1 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition"
-            >
-              Review & Submit →
-            </button>
-          </div>
+        <div className="flex gap-3">
+          <button onClick={() => setStep(0)} className="flex-1 py-3 border-2 rounded-xl text-sm font-semibold hover:bg-muted transition">
+            ← Back
+          </button>
+          <button onClick={onStep2Next} className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition">
+            Next: Selfie →
+          </button>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Step 3 — Review */}
-      {step === 3 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-bold">Review Your Application</h2>
+  // ── Step 3: Selfie ────────────────────────────────────────────────────────────
+  if (step === 2) {
+    return (
+      <div className="space-y-4">
+        <StepBar />
+        <p className="text-sm text-muted-foreground">
+          Take a photo of yourself holding your ID card next to your face.
+        </p>
 
-          <div className="bg-card border rounded-xl p-4 space-y-2 text-sm">
-            {[
-              ["Full Name", form.full_name],
-              ["Email", form.email],
-              ["Date of Birth", form.date_of_birth],
-              ["Gender", form.gender],
-              ["ID Number", form.id_number],
-              ["Address", form.address],
-              ["City", form.city],
-              ["Province", form.province || "—"],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between py-1 border-b last:border-0">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="font-medium capitalize">{value}</span>
-              </div>
-            ))}
-            <div className="flex justify-between py-1 border-b">
-              <span className="text-muted-foreground">ID Card Front</span>
-              <span className="text-green-600 font-medium">✓ Uploaded</span>
-            </div>
-            <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">ID Card Back</span>
-              <span className="text-green-600 font-medium">✓ Uploaded</span>
-            </div>
-          </div>
+        <ImageUploadBox label="Selfie with ID" file={selfie} onFile={setSelfie} />
 
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800">
-            After submission, our team will review your application within <strong>1–3 business days</strong>. You will receive your login credentials by email once approved.
-          </div>
-
-          <div className="flex gap-3">
-            <button onClick={() => setStep(2)} className="flex-1 py-3 border rounded-xl font-semibold hover:bg-muted transition">
-              ← Back
-            </button>
-            <button
-              onClick={submit}
-              disabled={loading}
-              className="flex-1 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition disabled:opacity-50"
-            >
-              {loading ? "Submitting…" : "Submit Application"}
-            </button>
-          </div>
+        <div className="flex gap-3">
+          <button onClick={() => setStep(1)} className="flex-1 py-3 border-2 rounded-xl text-sm font-semibold hover:bg-muted transition">
+            ← Back
+          </button>
+          <button onClick={onStep3Next} className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition">
+            Next: Review →
+          </button>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  // ── Step 4: Review & Submit ────────────────────────────────────────────────────
+  return (
+    <div className="space-y-4">
+      <StepBar />
+      <p className="text-sm text-muted-foreground">Review your information before submitting.</p>
+
+      <div className="bg-muted/40 rounded-xl p-4 space-y-1.5 text-sm">
+        {step1Data && [
+          ["Name",    `${step1Data.first_name} ${step1Data.last_name}`],
+          ["Phone",   step1Data.phone],
+          ["DOB",     step1Data.date_of_birth],
+          ["Gender",  step1Data.gender],
+          ["Address", step1Data.address],
+          ["City",    step1Data.city || "—"],
+          ["Province",step1Data.province || "—"],
+          ["Purpose", step1Data.purpose],
+        ].map(([label, value]) => (
+          <div key={label} className="flex justify-between py-0.5">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-medium text-right max-w-[60%] truncate">{value}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "ID Front", file: idFront },
+          { label: "ID Back",  file: idBack  },
+          { label: "Selfie",   file: selfie  },
+        ].map(({ label, file }) => (
+          <div key={label}>
+            <p className="text-xs text-muted-foreground mb-1">{label}</p>
+            {file && (
+              <img
+                src={URL.createObjectURL(file)}
+                alt={label}
+                className="w-full h-20 object-cover rounded-lg border"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={() => setStep(2)} className="flex-1 py-3 border-2 rounded-xl text-sm font-semibold hover:bg-muted transition">
+          ← Back
+        </button>
+        <button
+          onClick={onSubmit}
+          disabled={loading}
+          className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary/90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+          {loading ? "Submitting…" : "Submit Application"}
+        </button>
+      </div>
     </div>
   );
 }

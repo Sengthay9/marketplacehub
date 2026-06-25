@@ -37,4 +37,12 @@ return [
         'redirect'      => env('GOOGLE_REDIRECT_URI', 'http://localhost/api/v1/auth/google/callback'),
     ],
 
+    'firebase' => [
+        'api_key' => env('FIREBASE_API_KEY'),
+    ],
+
+    'bakong' => [
+        'token' => env('BAKONG_TOKEN'), // NBC Bakong developer API token (optional for check_payment)
+    ],
+
 ];

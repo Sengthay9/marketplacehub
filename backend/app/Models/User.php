@@ -23,6 +23,7 @@ class User extends Authenticatable
         'two_factor_secret', 'two_factor_confirmed_at', 'two_factor_recovery_codes',
         'last_login_at', 'last_login_ip',
         'ban_type', 'ban_reason', 'banned_until',
+        'vendor_status', 'force_password_change',
     ];
 
     protected $hidden = [
@@ -38,8 +39,21 @@ class User extends Authenticatable
             'last_login_at'            => 'datetime',
             'banned_until'             => 'datetime',
             'email_verified'           => 'boolean',
+            'force_password_change'    => 'boolean',
             'password'                 => 'hashed',
         ];
+    }
+
+    public static function generateUsername(string $firstName): string
+    {
+        $base      = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $firstName));
+        $base      = $base ?: 'user';
+        $candidate = $base . '@camcart';
+        while (static::where('username', $candidate)->exists()) {
+            // Random number with 1-7 digits, no leading zeros
+            $candidate = $base . rand(1, 9999999) . '@camcart';
+        }
+        return $candidate;
     }
 
     public function isBannedOrSuspended(): bool
@@ -64,6 +78,7 @@ class User extends Authenticatable
     }
 
     public function shop(): HasOne        { return $this->hasOne(Shop::class); }
+    public function vendorKyc(): HasOne   { return $this->hasOne(VendorKyc::class); }
     public function orders(): HasMany     { return $this->hasMany(Order::class); }
     public function reviews(): HasMany    { return $this->hasMany(Review::class); }
     public function addresses(): HasMany  { return $this->hasMany(Address::class); }

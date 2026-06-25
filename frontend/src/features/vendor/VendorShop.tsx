@@ -3,42 +3,71 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Camera, ImagePlus, Store } from "lucide-react";
+import {
+  Camera, ImagePlus, Store, Clock, Phone, MapPin,
+  Star, Edit3, CheckCircle, XCircle, Loader2, Power,
+} from "lucide-react";
 import api from "@/lib/axios";
 import VendorLayout from "@/components/layout/dashboards/VendorLayout";
 
+type ShopForm = {
+  name: string;
+  description: string;
+  contact_number: string;
+  address: string;
+  open_time: string;
+  close_time: string;
+};
+
+const emptyForm: ShopForm = {
+  name: "", description: "", contact_number: "", address: "", open_time: "", close_time: "",
+};
+
 export default function VendorShop() {
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "", contact_number: "", address: "", open_time: "", close_time: "" });
-  const logoRef = useRef<HTMLInputElement>(null);
-  const bannerRef = useRef<HTMLInputElement>(null);
+  const [editing, setEditing]   = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm]         = useState<ShopForm>(emptyForm);
+  const logoRef                 = useRef<HTMLInputElement>(null);
+  const bannerRef               = useRef<HTMLInputElement>(null);
 
   const { data: shop, isLoading } = useQuery({
     queryKey: ["vendor-shop"],
     queryFn: async () => (await api.get("/vendor/shop")).data.shop,
   });
 
-  const updateMutation = useMutation({
-    mutationFn: (data: typeof form) => api.put("/vendor/shop", data),
-    onSuccess: () => { toast.success("Shop updated!"); qc.invalidateQueries({ queryKey: ["vendor-shop"] }); setEditing(false); },
-    onError: () => toast.error("Failed to update shop."),
+  const createMutation = useMutation({
+    mutationFn: (data: ShopForm) => api.post("/vendor/shop", data),
+    onSuccess: () => {
+      toast.success("Shop created successfully.");
+      qc.invalidateQueries({ queryKey: ["vendor-shop"] });
+      setCreating(false);
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? "Failed to create shop."),
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: typeof form) => api.post("/vendor/shop", data),
-    onSuccess: () => { toast.success("Shop created!"); qc.invalidateQueries({ queryKey: ["vendor-shop"] }); setEditing(false); },
-    onError: () => toast.error("Failed to create shop."),
+  const updateMutation = useMutation({
+    mutationFn: (data: ShopForm) => api.put("/vendor/shop", data),
+    onSuccess: () => {
+      toast.success("Shop updated.");
+      qc.invalidateQueries({ queryKey: ["vendor-shop"] });
+      setEditing(false);
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? "Failed to update shop."),
   });
 
   const toggleMutation = useMutation({
     mutationFn: () => api.post("/vendor/shop/toggle"),
-    onSuccess: (res) => { toast.success(res.data.message); qc.invalidateQueries({ queryKey: ["vendor-shop"] }); },
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      qc.invalidateQueries({ queryKey: ["vendor-shop"] });
+    },
     onError: (err: any) => toast.error(err?.response?.data?.message ?? "Failed to toggle shop."),
   });
 
   const uploadLogo = async (file: File) => {
-    const fd = new FormData(); fd.append("logo", file);
+    const fd = new FormData();
+    fd.append("logo", file);
     try {
       await api.post("/vendor/shop/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
       toast.success("Logo updated.");
@@ -47,7 +76,8 @@ export default function VendorShop() {
   };
 
   const uploadBanner = async (file: File) => {
-    const fd = new FormData(); fd.append("banner", file);
+    const fd = new FormData();
+    fd.append("banner", file);
     try {
       await api.post("/vendor/shop/banner", fd, { headers: { "Content-Type": "multipart/form-data" } });
       toast.success("Banner updated.");
@@ -55,7 +85,7 @@ export default function VendorShop() {
     } catch { toast.error("Failed to upload banner."); }
   };
 
-  const handleEdit = () => {
+  const startEdit = () => {
     setForm({
       name:           shop?.name ?? "",
       description:    shop?.description ?? "",
@@ -67,162 +97,268 @@ export default function VendorShop() {
     setEditing(true);
   };
 
-  const statusColor = (s: string) =>
-    s === "approved" ? "bg-green-100 text-green-700" :
-    s === "closed"   ? "bg-gray-100 text-gray-600" :
-    s === "suspended"? "bg-orange-100 text-orange-700" :
-    "bg-red-100 text-red-700";
+  const startCreate = () => { setForm(emptyForm); setCreating(true); };
 
-  const statusLabel = (s: string) =>
-    s === "approved" ? "Open" : s === "closed" ? "Closed" : s;
+  const adminStatus    = shop?.status;
+  const isOpen         = shop?.is_open ?? false;
+  const isRestricted   = ["suspended", "banned"].includes(adminStatus ?? "");
+  const hasSchedule    = !!(shop?.open_time && shop?.close_time);
 
-  if (isLoading) return (
-    <VendorLayout title="My Shop">
-      <div className="space-y-4">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />)}</div>
-    </VendorLayout>
-  );
+  const adminBadge = () => {
+    if (adminStatus === "suspended") return { label: "Suspended", cls: "bg-orange-100 text-orange-700" };
+    if (adminStatus === "banned")    return { label: "Banned",    cls: "bg-red-100 text-red-700" };
+    return null;
+  };
 
-  if (!shop && !editing) return (
-    <VendorLayout title="My Shop">
-      <div className="text-center py-20">
-        <Store className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-        <p className="text-muted-foreground mb-4">You don't have a shop yet.</p>
-        <button onClick={() => { setForm({ name: "", description: "", contact_number: "", address: "", open_time: "", close_time: "" }); setEditing(true); }}
-          className="px-6 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-primary/90">
-          Create Your Shop
-        </button>
-      </div>
-    </VendorLayout>
-  );
-
-  if (editing) return (
-    <VendorLayout title="My Shop">
-      <form onSubmit={(e) => { e.preventDefault(); shop ? updateMutation.mutate(form) : createMutation.mutate(form); }} className="max-w-lg space-y-4">
-        <h2 className="font-bold text-lg">{shop ? "Edit Shop" : "Create Shop"}</h2>
-        {[
-          { label: "Shop Name *", key: "name", placeholder: "My Awesome Store" },
-          { label: "Phone", key: "contact_number", placeholder: "+855 12 345 678" },
-          { label: "Address", key: "address", placeholder: "Phnom Penh, Cambodia" },
-        ].map(({ label, key, placeholder }) => (
-          <div key={key}>
-            <label className="block text-sm font-medium mb-1">{label}</label>
-            <input value={form[key as keyof typeof form]}
-              onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-              placeholder={placeholder} required={key === "name"}
-              className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-        ))}
-        <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
-          <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            rows={3} placeholder="What does your shop sell?"
-            className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none" />
+  if (isLoading) {
+    return (
+      <VendorLayout title="My Shop">
+        <div className="space-y-4">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />)}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium mb-1">Open Time</label>
-            <input type="time" value={form.open_time} onChange={(e) => setForm((f) => ({ ...f, open_time: e.target.value }))}
-              className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
+      </VendorLayout>
+    );
+  }
+
+  if (!shop && !creating) {
+    return (
+      <VendorLayout title="My Shop">
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center">
+            <Store className="w-10 h-10 text-muted-foreground/50" />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Close Time</label>
-            <input type="time" value={form.close_time} onChange={(e) => setForm((f) => ({ ...f, close_time: e.target.value }))}
-              className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-        </div>
-        <div className="flex gap-3 pt-1">
-          <button type="submit" className="px-6 py-2.5 bg-primary text-white rounded-xl font-medium hover:bg-primary/90">
-            {shop ? "Save Changes" : "Create Shop"}
-          </button>
-          <button type="button" onClick={() => setEditing(false)} className="px-6 py-2.5 bg-muted rounded-xl font-medium hover:bg-muted/80">
-            Cancel
+          <h2 className="text-xl font-bold">You don't have a shop yet</h2>
+          <p className="text-muted-foreground text-sm text-center max-w-xs">
+            Create your shop to start selling.
+          </p>
+          <button onClick={startCreate}
+            className="mt-2 px-8 py-3 bg-primary text-white rounded-xl font-semibold hover:bg-primary/90 transition">
+            Create Shop
           </button>
         </div>
-      </form>
-    </VendorLayout>
-  );
+      </VendorLayout>
+    );
+  }
 
-  const isAdminRestricted = ["suspended", "banned"].includes(shop?.status);
+  if (creating || editing) {
+    const isCreate  = creating;
+    const isPending = isCreate ? createMutation.isPending : updateMutation.isPending;
+
+    return (
+      <VendorLayout title={isCreate ? "Create Shop" : "Edit Shop"}>
+        <div className="max-w-xl">
+          <h2 className="text-xl font-bold mb-6">{isCreate ? "Create Your Shop" : "Edit Shop"}</h2>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              isCreate ? createMutation.mutate(form) : updateMutation.mutate(form);
+            }}
+            className="space-y-4 bg-card border rounded-2xl p-6"
+          >
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Shop Name *</label>
+              <input value={form.name} required
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="e.g. Yumi Store"
+                className="w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Phone Number</label>
+              <input value={form.contact_number}
+                onChange={(e) => setForm((f) => ({ ...f, contact_number: e.target.value }))}
+                placeholder="+855 12 345 678"
+                className="w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Shop Address</label>
+              <input value={form.address}
+                onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                placeholder="Phnom Penh, Cambodia"
+                className="w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">Description</label>
+              <textarea value={form.description}
+                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                rows={3} placeholder="What does your shop sell?"
+                className="w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Open Time</label>
+                <input type="time" value={form.open_time}
+                  onChange={(e) => setForm((f) => ({ ...f, open_time: e.target.value }))}
+                  className="w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Close Time</label>
+                <input type="time" value={form.close_time}
+                  onChange={(e) => setForm((f) => ({ ...f, close_time: e.target.value }))}
+                  className="w-full border-2 rounded-xl px-3 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={isPending}
+                className="flex-1 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-50 flex items-center justify-center gap-2">
+                {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isCreate ? "Create Shop" : "Save Changes"}
+              </button>
+              <button type="button" onClick={() => isCreate ? setCreating(false) : setEditing(false)}
+                className="flex-1 py-2.5 border-2 rounded-xl text-sm font-medium hover:bg-muted transition">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </VendorLayout>
+    );
+  }
+
+  const badge = adminBadge();
+  const hasBadge = badge !== null;
 
   return (
     <VendorLayout title="My Shop">
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-2xl space-y-4">
 
-        {/* Shop card with banner + logo */}
         <div className="bg-card border rounded-2xl overflow-hidden">
+
           {/* Banner */}
-          <div className="relative h-36 bg-muted group cursor-pointer" onClick={() => bannerRef.current?.click()}>
+          <div className="relative h-52 bg-muted group cursor-pointer" onClick={() => bannerRef.current?.click()}>
             {shop?.banner
-              ? <img src={shop.banner} alt="banner" className="w-full h-full object-cover"
-                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
-              : <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImagePlus className="w-8 h-8" /></div>
+              ? <img src={shop.banner} alt="banner" className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                  <ImagePlus className="w-10 h-10" />
+                  <span className="text-sm font-medium">Click to upload banner</span>
+                </div>
             }
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-              <span className="text-white text-sm font-medium flex items-center gap-2"><Camera className="w-4 h-4" /> Change Banner</span>
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition rounded-t-2xl">
+              <span className="text-white text-sm font-semibold flex items-center gap-2 bg-black/40 px-4 py-2 rounded-xl">
+                <Camera className="w-4 h-4" /> Change Banner
+              </span>
             </div>
-            <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadBanner(e.target.files[0])} />
+            <input ref={bannerRef} type="file" accept="image/*" className="hidden"
+              onChange={(e) => e.target.files?.[0] && uploadBanner(e.target.files[0])} />
           </div>
 
           {/* Logo + info */}
           <div className="px-6 pb-6">
-            <div className="flex items-end gap-4 -mt-8 mb-4">
-              {/* Logo */}
-              <div className="relative group cursor-pointer flex-shrink-0" onClick={() => logoRef.current?.click()}>
-                <div className="w-16 h-16 rounded-xl border-4 border-card bg-muted overflow-hidden">
+            <div className="flex items-end gap-5 -mt-12 mb-4">
+              <div className="relative group cursor-pointer shrink-0" onClick={() => logoRef.current?.click()}>
+                <div className="w-24 h-24 rounded-2xl border-4 border-card bg-muted overflow-hidden shadow-lg">
                   {shop?.logo
-                    ? <img src={shop.logo} alt="logo" className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                          e.currentTarget.nextElementSibling?.classList.remove("hidden");
-                        }} />
-                    : null
+                    ? <img src={shop.logo} alt="logo" className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted-foreground">
+                        <Store className="w-8 h-8" />
+                        <span className="text-[10px]">Logo</span>
+                      </div>
                   }
-                  <div className={`w-full h-full flex items-center justify-center text-muted-foreground ${shop?.logo ? "hidden" : ""}`}>
-                    <Store className="w-6 h-6" />
-                  </div>
                 </div>
-                <div className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                  <Camera className="w-4 h-4 text-white" />
+                <div className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                  <Camera className="w-5 h-5 text-white" />
                 </div>
-                <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
+                <input ref={logoRef} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
               </div>
 
               <div className="flex-1 pt-10">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-xl font-bold">{shop.name}</h2>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColor(shop.status)}`}>
-                    {statusLabel(shop.status)}
-                  </span>
+                  {hasBadge && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge!.cls}`}>
+                      {badge!.label}
+                    </span>
+                  )}
+                  {!isRestricted && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
+                      isOpen ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                    }`}>
+                      {isOpen
+                        ? <><CheckCircle className="w-3 h-3" /> Open</>
+                        : <><XCircle className="w-3 h-3" /> Closed</>
+                      }
+                    </span>
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground">/{shop.slug}</p>
               </div>
             </div>
 
-            {shop.description && <p className="text-sm text-muted-foreground mb-4">{shop.description}</p>}
+            {shop.description && (
+              <p className="text-sm text-muted-foreground mb-4">{shop.description}</p>
+            )}
 
-            <div className="grid grid-cols-2 gap-3 text-sm mb-4">
-              <div><span className="text-muted-foreground">Phone: </span>{shop.contact_number || "—"}</div>
-              <div><span className="text-muted-foreground">Address: </span>{shop.address || "—"}</div>
-              <div><span className="text-muted-foreground">Rating: </span>⭐ {shop.rating != null ? Number(shop.rating).toFixed(1) : "—"}</div>
-              <div>
-                <span className="text-muted-foreground">Hours: </span>
-                {shop.open_time && shop.close_time ? `${shop.open_time} – ${shop.close_time}` : "—"}
-              </div>
+            <div className="grid grid-cols-2 gap-y-2 gap-x-6 text-sm mb-5">
+              {shop.contact_number && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Phone className="w-3.5 h-3.5 shrink-0" /><span>{shop.contact_number}</span>
+                </div>
+              )}
+              {shop.address && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" /><span>{shop.address}</span>
+                </div>
+              )}
+              {(shop.open_time || shop.close_time) && (
+                <div className="flex items-center gap-1.5 col-span-2">
+                  <Clock className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                  <span className="text-muted-foreground">{shop.open_time || "—"} – {shop.close_time || "—"}</span>
+                </div>
+              )}
+              {shop.rating != null && (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400 shrink-0" />
+                  <span>{Number(shop.rating).toFixed(1)} ({shop.review_count ?? 0} reviews)</span>
+                </div>
+              )}
             </div>
+
+            {isRestricted && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                Your shop has been <strong>{adminStatus}</strong> by admin. Contact support.
+              </div>
+            )}
+
+            {!isRestricted && hasSchedule && (
+              <div className="mb-4 p-3 rounded-xl text-sm border bg-muted/40 border-border text-muted-foreground">
+                <p className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  Schedule: {shop.open_time} – {shop.close_time}. Open/close is managed automatically.
+                </p>
+              </div>
+            )}
 
             <div className="flex gap-3 flex-wrap">
-              <button onClick={handleEdit}
-                className="px-5 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90">
-                Edit Shop
+              <button onClick={startEdit}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-semibold hover:bg-primary/90 transition">
+                <Edit3 className="w-4 h-4" /> Edit Shop
               </button>
-              {!isAdminRestricted && (
-                <button onClick={() => toggleMutation.mutate()} disabled={toggleMutation.isPending}
-                  className={`px-5 py-2 rounded-xl text-sm font-medium transition ${
-                    shop.status === "approved"
-                      ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+
+              {!isRestricted && (
+                <button
+                  onClick={() => toggleMutation.mutate()}
+                  disabled={toggleMutation.isPending}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 ${
+                    isOpen
+                      ? "bg-red-100 text-red-700 hover:bg-red-200"
                       : "bg-green-100 text-green-700 hover:bg-green-200"
-                  }`}>
-                  {shop.status === "approved" ? "Close Shop" : "Open Shop"}
+                  }`}
+                >
+                  {toggleMutation.isPending
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Power className="w-4 h-4" />
+                  }
+                  {isOpen ? "Close Shop" : "Open Shop"}
                 </button>
               )}
             </div>

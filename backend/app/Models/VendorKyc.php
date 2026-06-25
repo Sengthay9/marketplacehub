@@ -11,7 +11,7 @@ class VendorKyc extends Model
 
     protected $fillable = [
         'user_id', 'full_name', 'date_of_birth', 'gender',
-        'id_number', 'address', 'city', 'province',
+        'id_number', 'address', 'city', 'province', 'purpose',
         'id_card_front', 'id_card_back', 'selfie_with_id',
         'status', 'rejection_reason', 'reviewed_by', 'reviewed_at',
     ];

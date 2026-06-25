@@ -3,16 +3,26 @@ import type { User } from "@/types";
 
 export const authService = {
   async register(data: {
-    name: string; email: string; password: string;
-    password_confirmation: string; role?: string; phone?: string;
+    name: string; username: string; password: string;
+    password_confirmation: string; role?: string; phone?: string; email?: string;
   }) {
     const res = await api.post("/auth/register", data);
-    return res.data as { token: string; user: User; message: string };
+    return res.data as { message: string };
   },
 
   async login(identifier: string, password: string) {
     const res = await api.post("/auth/login", { identifier, password });
-    return res.data as { token: string; user: User; message: string };
+    return res.data as { token: string; user: User; message: string; force_password_change: boolean };
+  },
+
+  async googleLogin(accessToken: string) {
+    const res = await api.post("/auth/google/token", { access_token: accessToken });
+    return res.data as { token: string; user: User; message: string; needs_onboarding: boolean; force_password_change: boolean };
+  },
+
+  async setPassword(data: { password: string; password_confirmation: string }) {
+    const res = await api.post("/auth/set-password", data);
+    return res.data as { message: string };
   },
 
   async logout() {

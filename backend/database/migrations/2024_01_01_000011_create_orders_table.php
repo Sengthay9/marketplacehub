@@ -18,16 +18,13 @@ return new class extends Migration
             $table->decimal('subtotal', 12, 2);
             $table->decimal('discount_amount', 12, 2)->default(0);
             $table->decimal('tax_amount', 12, 2)->default(0);
-            $table->decimal('shipping_fee', 12, 2)->default(0);
             $table->decimal('total', 12, 2);
             $table->enum('status', [
                 'pending', 'confirmed', 'processing',
-                'shipped', 'delivered', 'cancelled', 'refunded'
+                'delivered', 'cancelled', 'refunded'
             ])->default('pending');
-            $table->string('tracking_number')->nullable();
             $table->text('notes')->nullable();
             $table->timestamp('confirmed_at')->nullable();
-            $table->timestamp('shipped_at')->nullable();
             $table->timestamp('delivered_at')->nullable();
             $table->timestamp('cancelled_at')->nullable();
             $table->timestamps();

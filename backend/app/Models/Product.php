@@ -18,6 +18,7 @@ class Product extends Model
         'shop_id', 'category_id', 'name', 'slug', 'sku', 'description',
         'price', 'discount_price', 'stock_quantity', 'rating', 'review_count',
         'status', 'rejection_reason', 'is_featured', 'sold_count',
+        'warning_reason',
     ];
 
     protected $appends = ['effective_price', 'is_in_stock'];

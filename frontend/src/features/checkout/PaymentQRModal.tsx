@@ -1,18 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { CheckCircle, XCircle, RefreshCw, Clock, Shield, X } from "lucide-react";
+import { CheckCircle, XCircle, RefreshCw, Clock, Shield, X, Phone, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/axios";
-import { formatCurrency } from "@/lib/utils";
+import KhqrCard from "@/components/payment/KhqrCard";
 
 interface ShopQrCode {
-  id: number;
+  id: number | string;
+  bank_account_id?: number | null;
   bank_name: string;
   bank_label: string;
   currency: "usd" | "khr";
-  qr_image_url: string;
+  qr_image_url: string | null;
+  khqr_string?: string | null;
   account_name: string | null;
+  account_number?: string | null;
+  phone_number?: string | null;
+  is_khqr?: boolean;
+  is_platform?: boolean;
 }
 
 const CURRENCY_SYMBOL: Record<string, string> = { usd: "$", khr: "៛" };
@@ -22,7 +28,7 @@ interface Props {
   orderId: number;
   orderRef: string;
   total: number;
-  qrCode: ShopQrCode;       // the vendor's actual QR image (selected by customer)
+  qrCode: ShopQrCode;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -30,23 +36,60 @@ interface Props {
 export default function PaymentQRModal({ orderId, orderRef, total, qrCode, onSuccess, onCancel }: Props) {
   const [stage, setStage] = useState<"pending" | "checking" | "success" | "failed">("pending");
   const [secondsLeft, setSecondsLeft] = useState(EXPIRE_SECONDS);
+  const [dynamicKhqr, setDynamicKhqr] = useState<string | null>(null);
+  const [qrMd5, setQrMd5] = useState<string | null>(null);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Fetch dynamic KHQR with order amount pre-filled and store its MD5 for payment verification
+  useEffect(() => {
+    if (total <= 0) return;
+
+    if (qrCode.is_platform) {
+      api
+        .get(`/platform/bank-account/dynamic-qr`, {
+          params: { amount: total.toFixed(2), currency: qrCode.currency.toUpperCase() },
+        })
+        .then((res) => {
+          setDynamicKhqr(res.data.khqr_string);
+          setQrMd5(res.data.md5 ?? null);          // store MD5 for Bakong API check
+        })
+        .catch(() => {
+          if (qrCode.khqr_string) setDynamicKhqr(qrCode.khqr_string);
+        });
+    } else if (qrCode.is_khqr && qrCode.bank_account_id) {
+      api
+        .get(`/vendor/bank-accounts/${qrCode.bank_account_id}/dynamic-qr`, {
+          params: { amount: total.toFixed(2), currency: qrCode.currency.toUpperCase() },
+        })
+        .then((res) => setDynamicKhqr(res.data.khqr_string))
+        .catch(() => {
+          if (qrCode.khqr_string) setDynamicKhqr(qrCode.khqr_string);
+        });
+    }
+  }, [qrCode, total]);
+
+  const markSuccess = useCallback(() => {
+    clearInterval(pollRef.current!);
+    setStage("success");
+    toast.success("Payment confirmed!");
+    setTimeout(onSuccess, 1500);
+  }, [onSuccess]);
+
+  // Manual "I've paid" button — used as fallback when Bakong token not yet configured
   const confirmPayment = useCallback(async () => {
     setStage("checking");
     try {
       await api.post(`/customer/payments/${orderId}/confirm`, {
         gateway: qrCode.bank_name,
       });
-      setStage("success");
-      toast.success("Payment confirmed!");
-      setTimeout(onSuccess, 1500);
+      markSuccess();
     } catch {
       setStage("failed");
       toast.error("Payment confirmation failed. Contact support if money was deducted.");
     }
-  }, [orderId, qrCode.bank_name, onSuccess]);
+  }, [orderId, qrCode.bank_name, markSuccess]);
 
+  // Countdown timer
   useEffect(() => {
     const t = setInterval(() => {
       setSecondsLeft((s) => {
@@ -57,29 +100,34 @@ export default function PaymentQRModal({ orderId, orderRef, total, qrCode, onSuc
     return () => clearInterval(t);
   }, []);
 
+  // Auto-poll: if platform QR + MD5 available → check real Bakong API
+  // Otherwise fall back to checking payment status in our database
   useEffect(() => {
     pollRef.current = setInterval(async () => {
       try {
-        const res = await api.get(`/customer/payments/${orderId}/status`);
-        if (res.data.status === "completed") {
-          clearInterval(pollRef.current!);
-          setStage("success");
-          setTimeout(onSuccess, 1500);
+        if (qrCode.is_platform && qrMd5) {
+          // Real Bakong network check
+          const res = await api.post(`/customer/payments/${orderId}/check-bakong`, { md5: qrMd5 });
+          if (res.data.paid) { markSuccess(); }
+        } else {
+          // Fallback: check our database (vendor QR or no Bakong token)
+          const res = await api.get(`/customer/payments/${orderId}/status`);
+          if (res.data.status === "completed") { markSuccess(); }
         }
       } catch {}
     }, 5000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [orderId, onSuccess]);
+  }, [orderId, qrCode.is_platform, qrMd5, markSuccess]);
 
-  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
-  const ss = String(secondsLeft % 60).padStart(2, "0");
+  const mm  = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const ss  = String(secondsLeft % 60).padStart(2, "0");
   const sym = CURRENCY_SYMBOL[qrCode.currency] ?? "$";
+  const khqrToShow = dynamicKhqr ?? (qrCode.is_khqr ? qrCode.khqr_string : null);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-card border rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
 
-        {/* Header */}
         <div className="bg-gradient-to-r from-primary to-primary/80 p-5 text-white">
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-bold">{qrCode.bank_label}</h2>
@@ -96,23 +144,44 @@ export default function PaymentQRModal({ orderId, orderRef, total, qrCode, onSuc
         <div className="p-5">
           {stage === "pending" && (
             <>
-              {/* Real QR image from vendor */}
-              <div className="flex justify-center mb-3">
-                <div className="p-2 bg-white rounded-xl shadow border">
-                  <img
-                    src={qrCode.qr_image_url}
-                    alt={`${qrCode.bank_label} QR`}
-                    className="w-44 h-44 object-contain rounded-lg"
-                    onError={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+              <div className="mb-3">
+                {khqrToShow ? (
+                  <KhqrCard
+                    khqrString={khqrToShow}
+                    merchantName={qrCode.account_name ?? qrCode.bank_label}
+                    bankName={qrCode.bank_label}
+                    amount={dynamicKhqr ? total : undefined}
+                    currency={qrCode.currency}
+                    accountNumber={qrCode.account_number ?? undefined}
+                    size={180}
                   />
-                </div>
+                ) : qrCode.qr_image_url ? (
+                  <div className="bg-white border rounded-xl p-3 flex flex-col items-center gap-2">
+                    <img
+                      src={qrCode.qr_image_url}
+                      alt={`${qrCode.bank_label} QR`}
+                      className="w-44 h-44 object-contain rounded-lg"
+                      onError={(e) => { e.currentTarget.style.opacity = "0.3"; }}
+                    />
+                    {qrCode.account_name && (
+                      <p className="text-sm font-semibold text-gray-800">{qrCode.account_name}</p>
+                    )}
+                    <div className="flex justify-center gap-4 text-xs text-muted-foreground">
+                      {qrCode.phone_number && (
+                        <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{qrCode.phone_number}</span>
+                      )}
+                      {qrCode.account_number && (
+                        <span className="flex items-center gap-1"><CreditCard className="w-3 h-3" />{qrCode.account_number}</span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-44 h-44 flex items-center justify-center text-xs text-muted-foreground border rounded-xl mx-auto">
+                    QR unavailable
+                  </div>
+                )}
               </div>
 
-              {qrCode.account_name && (
-                <p className="text-center text-sm font-semibold mb-1">{qrCode.account_name}</p>
-              )}
-
-              {/* Timer */}
               <div className="flex items-center justify-center gap-1.5 mb-3">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className={`font-mono text-xs font-bold ${secondsLeft < 60 ? "text-destructive" : "text-muted-foreground"}`}>
@@ -122,7 +191,7 @@ export default function PaymentQRModal({ orderId, orderRef, total, qrCode, onSuc
 
               <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 rounded-xl p-2.5 mb-4">
                 <Shield className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
-                Open your {qrCode.bank_label} app → Scan QR → Confirm amount → Pay. Do not share this QR with anyone.
+                Open your banking app → Scan QR → {dynamicKhqr ? "Amount is pre-filled" : "Enter the amount"} → Pay. Money is held securely by CamCart.
               </div>
 
               <div className="flex gap-2">
@@ -133,7 +202,7 @@ export default function PaymentQRModal({ orderId, orderRef, total, qrCode, onSuc
                   onClick={confirmPayment}
                   className="flex-1 py-2.5 bg-primary text-white rounded-xl text-xs font-semibold hover:bg-primary/90"
                 >
-                  I've paid ✓
+                  I&apos;ve paid ✓
                 </button>
               </div>
             </>

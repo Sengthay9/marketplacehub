@@ -3,16 +3,20 @@
 namespace App\Http\Controllers\Api\V1\Customer;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminBankAccount;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\SavedCard;
 use App\Models\AuditLog;
+use App\Services\KhqrService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
+    public function __construct(private KhqrService $khqr) {}
+
     /**
      * Get payment status for an order (used by frontend to poll QR payment).
      */
@@ -89,5 +93,49 @@ class PaymentController extends Controller
             'status'          => 'completed',
             'transaction_ref' => $transactionRef,
         ]);
+    }
+
+    /**
+     * Poll Bakong API to verify a QR payment was actually made on the network.
+     * Frontend can call this instead of — or alongside — the manual "I've paid" button.
+     */
+    public function checkBakong(Request $request, int $orderId): JsonResponse
+    {
+        $request->validate(['md5' => 'required|string|size:32']);
+
+        $order = Order::where('user_id', $request->user()->id)
+            ->with('payment')
+            ->findOrFail($orderId);
+
+        if ($order->payment?->status === 'completed') {
+            return response()->json(['paid' => true, 'status' => 'completed']);
+        }
+
+        $transaction = $this->khqr->checkPaymentByMd5($request->md5);
+
+        if ($transaction) {
+            // Auto-confirm payment
+            $ref = $transaction['externalRef'] ?? $transaction['hash'] ?? Str::upper(Str::random(12));
+
+            if ($order->payment) {
+                $order->payment->update([
+                    'status'         => 'completed',
+                    'gateway'        => 'bakong',
+                    'transaction_id' => $ref,
+                ]);
+            } else {
+                Payment::create([
+                    'order_id'       => $order->id,
+                    'gateway'        => 'bakong',
+                    'amount'         => $order->total,
+                    'status'         => 'completed',
+                    'transaction_id' => $ref,
+                ]);
+            }
+
+            return response()->json(['paid' => true, 'status' => 'completed', 'transaction' => $transaction]);
+        }
+
+        return response()->json(['paid' => false, 'status' => $order->payment?->status ?? 'pending']);
     }
 }

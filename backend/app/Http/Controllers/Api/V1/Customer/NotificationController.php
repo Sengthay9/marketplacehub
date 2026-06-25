@@ -1,17 +1,46 @@
 <?php
+
 namespace App\Http\Controllers\Api\V1\Customer;
+
 use App\Http\Controllers\Controller;
+use App\Models\AppNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+
 class NotificationController extends Controller
 {
-    public function __call($name, $args): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(['message' => 'Not yet implemented.'], 501);
+        $notifications = AppNotification::where('user_id', $request->user()->id)
+            ->latest()
+            ->paginate(20);
+
+        $unreadCount = AppNotification::where('user_id', $request->user()->id)
+            ->whereNull('read_at')
+            ->count();
+
+        return response()->json([
+            'notifications' => $notifications,
+            'unread_count'  => $unreadCount,
+        ]);
     }
-    public function index(Request $r): JsonResponse { return $this->__call('index', []); }
-    public function show(Request $r, $id): JsonResponse { return $this->__call('show', []); }
-    public function store(Request $r): JsonResponse { return $this->__call('store', []); }
-    public function update(Request $r, $id): JsonResponse { return $this->__call('update', []); }
-    public function destroy(Request $r, $id): JsonResponse { return $this->__call('destroy', []); }
+
+    public function markRead(Request $request, int $id): JsonResponse
+    {
+        $notification = AppNotification::where('user_id', $request->user()->id)
+            ->findOrFail($id);
+
+        $notification->markRead();
+
+        return response()->json(['message' => 'Marked as read.']);
+    }
+
+    public function markAllRead(Request $request): JsonResponse
+    {
+        AppNotification::where('user_id', $request->user()->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->json(['message' => 'All notifications marked as read.']);
+    }
 }

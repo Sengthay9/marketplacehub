@@ -1,67 +1,192 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import "leaflet/dist/leaflet.css";
 
+/* ── Google Fonts ──────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+Khmer:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+/* ── CamCart Design Tokens ─────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --success: 142 76% 36%;
-    --success-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    /* Brand */
+    --brand-blue:       216 85% 34%;   /* #0D47A1 */
+    --brand-blue-hover: 213 77% 42%;   /* #1565C0 */
+    --brand-orange:     25 100% 50%;   /* #FF6B00 */
+    --brand-orange-hover: 30 100% 63%; /* #FF8C42 */
+
+    /* Backgrounds */
+    --background:  212 38% 98%;        /* #F8FAFC */
+    --foreground:  222 47% 11%;        /* #0F172A */
+    --card:        0 0% 100%;          /* #FFFFFF */
+    --card-foreground: 222 47% 11%;
+
+    /* UI surfaces */
+    --popover:          0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary = Brand Blue */
+    --primary:          216 85% 34%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary:        213 27% 93%;
+    --secondary-foreground: 216 85% 34%;
+
+    /* Muted */
+    --muted:            213 27% 94%;
+    --muted-foreground: 215 19% 47%;   /* #64748B */
+
+    /* Accent = brand orange tint */
+    --accent:           25 100% 95%;
+    --accent-foreground: 25 100% 30%;
+
+    /* Semantic */
+    --destructive:      0 84% 60%;     /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
+    --success:          142 71% 45%;   /* #22C55E */
+    --success-foreground: 0 0% 100%;
+    --warning:          38 92% 50%;    /* #F59E0B */
+    --warning-foreground: 0 0% 100%;
+
+    /* Orange alias for buy-now */
+    --orange:           25 100% 50%;
+    --orange-foreground: 0 0% 100%;
+
+    /* Borders & inputs */
+    --border:  213 27% 89%;            /* #E2E8F0 */
+    --input:   213 27% 89%;
+    --ring:    216 85% 34%;
+
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* Backgrounds */
+    --background:  222 47% 11%;        /* #0F172A */
+    --foreground:  212 38% 98%;        /* #F8FAFC */
+    --card:        217 32% 17%;        /* #1E293B */
+    --card-foreground: 212 38% 98%;
+    --popover:     217 32% 17%;
+    --popover-foreground: 212 38% 98%;
+
+    /* Primary brightened for dark bg */
+    --primary:          213 77% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary:        215 28% 22%;
+    --secondary-foreground: 212 38% 98%;
+
+    /* Muted */
+    --muted:            215 28% 22%;
+    --muted-foreground: 215 20% 65%;   /* #CBD5E1 */
+
+    /* Accent */
+    --accent:           25 60% 18%;
+    --accent-foreground: 25 100% 70%;
+
+    /* Semantic */
+    --destructive:      0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success:          142 60% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning:          38 80% 42%;
+    --warning-foreground: 0 0% 100%;
+    --orange:           25 100% 50%;
+    --orange-foreground: 0 0% 100%;
+
+    /* Borders */
+    --border: 215 25% 27%;             /* #334155 */
+    --input:  215 25% 27%;
+    --ring:   213 77% 52%;
   }
 }
 
+/* ── Base Resets ───────────────────────────────────────────────────────────── */
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Noto Sans Khmer', 'Inter', sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', 'Noto Sans Khmer', sans-serif;
+    @apply font-bold tracking-tight;
+  }
+  /* Price displays */
+  .price {
+    font-family: 'Inter', sans-serif;
+    @apply font-bold tabular-nums;
+  }
 }
 
+/* ── Utility classes ───────────────────────────────────────────────────────── */
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  /* Thin scroll */
+  .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { @apply bg-transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+
+  /* CamCart brand gradients */
+  .gradient-brand {
+    background: linear-gradient(135deg, hsl(var(--brand-blue)), hsl(213 77% 28%));
   }
+  .gradient-orange {
+    background: linear-gradient(135deg, hsl(var(--brand-orange)), hsl(var(--brand-orange-hover)));
+  }
+  .gradient-hero {
+    background: linear-gradient(145deg, #0D47A1 0%, #1565C0 40%, #0D47A1 100%);
+  }
+
+  /* Card hover lift */
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5;
+  }
+
+  /* Smooth theme transition */
+  .theme-transition,
+  .theme-transition * {
+    transition: background-color 200ms ease, border-color 200ms ease, color 150ms ease;
+  }
+
+  /* Line clamp utilities */
+  .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+  .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .line-clamp-3 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes slideProgress {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.animate-fade-in-up { animation: fadeInUp 0.4s ease both; }
+.animate-shimmer {
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--border)) 50%, hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }

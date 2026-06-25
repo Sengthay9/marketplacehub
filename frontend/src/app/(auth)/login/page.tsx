@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import LoginForm from "@/features/auth/LoginForm";
+import SiteLogo from "@/components/SiteLogo";
 
 export const metadata: Metadata = { title: "Sign In" };
 
@@ -11,7 +12,7 @@ export default function LoginPage() {
       {/* Brand Panel */}
       <div className="hidden lg:flex flex-col justify-center px-16 bg-gradient-to-br from-primary via-blue-600 to-indigo-700 text-white">
         <div className="max-w-md">
-          <div className="text-4xl font-black mb-3">🛍️ MarketplaceHub</div>
+          <div className="mb-3"><SiteLogo size={40} textClassName="text-4xl" /></div>
           <h1 className="text-4xl font-bold leading-tight mb-4">
             Your marketplace,<br />your rules.
           </h1>
@@ -35,8 +36,8 @@ export default function LoginPage() {
           <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition mb-6">
             <ArrowLeft className="w-4 h-4" /> Back to Home
           </Link>
-          <Link href="/" className="text-2xl font-black text-primary mb-2 lg:hidden block">
-            🛍️ MarketplaceHub
+          <Link href="/" className="mb-2 lg:hidden block">
+            <SiteLogo size={28} textClassName="text-2xl text-primary" />
           </Link>
           <h2 className="text-2xl font-bold mb-1">Welcome back</h2>
           <p className="text-muted-foreground mb-8">Sign in to your account</p>

@@ -61,22 +61,17 @@ class SocialAuthController extends Controller
             }
 
             $isNew = true;
-            $base     = strtolower(preg_replace('/[^a-zA-Z0-9_]/', '', explode('@', $googleUser->getEmail())[0]));
-            $username = $base ?: 'user';
-            $candidate = $username;
-            $i = 1;
-            while (User::where('username', $candidate)->exists()) {
-                $candidate = $username . $i++;
-            }
+            $googleName   = $googleUser->getName() ?? $googleUser->getEmail();
+            $emailPrefix  = explode('@', $googleUser->getEmail())[0];
             $user = User::create([
-                'name'           => $googleUser->getName() ?? $googleUser->getEmail(),
-                'username'       => $candidate,
+                'name'           => $googleName,
+                'username'       => User::generateUsername($emailPrefix),
                 'email'          => $googleUser->getEmail(),
                 'google_id'      => $googleUser->getId(),
                 'avatar'         => $googleUser->getAvatar(),
                 'role'           => 'customer',
                 'email_verified' => true,
-                'password'       => bcrypt(str()->random(32)),
+                'password'       => str()->random(32),
             ]);
 
             Cart::create(['user_id' => $user->id]);
@@ -94,6 +89,71 @@ class SocialAuthController extends Controller
         ]);
 
         return redirect($this->frontendUrl . '/auth/callback?' . $params);
+    }
+
+    // POST /auth/google/token — frontend passes Google access_token, we verify and sign in
+    public function handleGoogleToken(Request $request): JsonResponse
+    {
+        $data = $request->validate(['access_token' => 'required|string']);
+
+        // Fetch user info from Google using the access token
+        $response = \Illuminate\Support\Facades\Http::get('https://www.googleapis.com/oauth2/v3/userinfo', [
+            'access_token' => $data['access_token'],
+        ]);
+
+        if (!$response->ok()) {
+            return response()->json(['message' => 'Invalid Google token.'], 401);
+        }
+
+        $googleUser = $response->json();
+        $isNew = false;
+
+        $user = User::where('google_id', $googleUser['sub'])
+                    ->orWhere('email', $googleUser['email'])
+                    ->first();
+
+        if ($user) {
+            if (!$user->google_id) {
+                $user->update(['google_id' => $googleUser['sub']]);
+            }
+        } else {
+            $isNew = true;
+            $googleName  = $googleUser['name'] ?? $googleUser['email'];
+            $emailPrefix = explode('@', $googleUser['email'])[0];
+            $user = User::create([
+                'name'           => $googleName,
+                'username'       => User::generateUsername($emailPrefix),
+                'email'          => $googleUser['email'],
+                'google_id'      => $googleUser['sub'],
+                'avatar'         => $googleUser['picture'] ?? null,
+                'role'           => 'customer',
+                'email_verified' => true,
+                'password'       => str()->random(32),
+            ]);
+
+            Cart::create(['user_id' => $user->id]);
+            Wishlist::create(['user_id' => $user->id]);
+        }
+
+        $user->tokens()->delete();
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message'               => $isNew ? 'Account created.' : 'Signed in.',
+            'token'                 => $token,
+            'needs_onboarding'      => $isNew,
+            'force_password_change' => (bool) $user->force_password_change,
+            'user'                  => [
+                'id'                    => $user->id,
+                'name'                  => $user->name,
+                'email'                 => $user->email,
+                'phone'                 => $user->phone,
+                'avatar'                => $user->avatar,
+                'role'                  => $user->role,
+                'email_verified'        => $user->email_verified,
+                'force_password_change' => (bool) $user->force_password_change,
+            ],
+        ]);
     }
 
     // PATCH /auth/onboard — called after Google/Phone sign-up to set name + password

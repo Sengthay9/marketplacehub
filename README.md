@@ -100,7 +100,7 @@ docker cp backend/path/to/File.php mh_backend:/var/www/html/path/to/File.php
   - Delivery address: select saved address or link to add new one at `/account`
   - Payment: COD / QR Bank Transfer / Credit Card
   - QR auto-selects first code when QR method chosen
-  - Order summary: subtotal + shipping ($2/shop) + tax (0.5%) + discount
+  - Order summary: subtotal + discount (coupon)
   - Coupon code support
 - **QR Payment Modal**: Shows vendor's real QR image after order placed, 15-min timer, "I've paid" button, polls for payment confirmation
 - **Order Tracking**: Customer can view order status + payment status
@@ -120,7 +120,7 @@ docker cp backend/path/to/File.php mh_backend:/var/www/html/path/to/File.php
   - Payment column shows method (COD/ABA/Bakong) + status (Awaiting/Paid/Refunded)
   - **Confirm Payment** (green ✓ button): vendor marks QR payment received → order moves to processing
   - **Reject Payment** (red ✗ button): vendor rejects QR payment → payment marked Refunded, order cancelled, stock restored
-  - Confirm → Ship → Deliver order status flow
+  - Confirm → Deliver order status flow (no separate shipped step)
 - **Shop Reviews**: Vendors can reply to customer reviews
 - **Analytics Dashboard**: Revenue, orders, top products
 
@@ -134,6 +134,18 @@ docker cp backend/path/to/File.php mh_backend:/var/www/html/path/to/File.php
 
 ---
 
+## Order Status Flow
+
+```
+pending → confirmed → processing → delivered
+                   ↘
+                  cancelled / refunded
+```
+
+There is no `shipped` step — vendors confirm and then mark directly as delivered.
+
+---
+
 ## Payment Flow
 
 ```
@@ -144,7 +156,7 @@ Payment status = "pending"
         │
     COD? ──────────────────────────────────────────────────────────────►
         │                                              Vendor clicks ✓ Confirm Payment
-    QR/Bank?                                           Order → "confirmed" → Ship → Deliver
+    QR/Bank?                                           Order → "confirmed" → Deliver
         │
         ▼
 Customer sees QR modal (real vendor QR image)
@@ -156,10 +168,23 @@ Payment status = "completed" (customer-confirmed)
 Vendor sees "Paid" badge in orders
 Vendor clicks ✓ to confirm they received it
         │
-        ├── Vendor confirms → Order → "confirmed" → Ship → Deliver
+        ├── Vendor confirms → Order → "confirmed" → Deliver
         │
         └── Vendor rejects → Payment = "Refunded", Order = "Cancelled", Stock restored
 ```
+
+---
+
+## Platform Fee
+
+Vendors pay a tiered platform fee deducted from their payout (invisible to customers):
+
+| Order Total | Fee Rate |
+|-------------|----------|
+| ≤ $50       | 5%       |
+| $51–$150    | 8%       |
+| $151–$300   | 10%      |
+| > $300      | 15%      |
 
 ---
 
@@ -195,7 +220,7 @@ Marketplacehub/
 │   │   │   ├── ShopReview.php       ← shop ratings
 │   │   │   └── ...
 │   │   └── Services/
-│   │       ├── Order/OrderService.php  ← calculateSummary (snake_case keys), placeOrder
+│   │       ├── Order/OrderService.php  ← calculateSummary, placeOrder, updateStatus
 │   │       └── Cart/CartService.php   ← loads items.product.shop:id,name,slug
 │   └── routes/api.php
 │
@@ -211,7 +236,7 @@ Marketplacehub/
     │   │   ├── CheckoutView.tsx      ← uses plain <img> for QR (not Next.js Image)
     │   │   └── PaymentQRModal.tsx    ← uses plain <img> for QR
     │   ├── vendor/
-    │   │   ├── VendorOrders.tsx      ← payment column, confirm/reject, "New Order" label
+    │   │   ├── VendorOrders.tsx      ← payment column, confirm/reject buttons
     │   │   └── ...
     │   ├── shops/
     │   │   ├── ShopDetailView.tsx    ← shop reviews, heart favorite button
@@ -255,7 +280,7 @@ Marketplacehub/
 | POST | `/api/v1/customer/shops/:slug/favorite` | Toggle shop favorite |
 | POST | `/api/v1/customer/shops/:slug/reviews` | Add shop review |
 | POST | `/api/v1/customer/reviews` | Add product review |
-| GET | `/api/v1/customer/checkout/summary` | Order totals (subtotal/shipping_fee/tax_amount/total) |
+| GET | `/api/v1/customer/checkout/summary` | Order totals (subtotal/tax_amount/discount/total) |
 | POST | `/api/v1/customer/checkout/place` | Place order |
 | GET | `/api/v1/customer/orders` | Order history |
 | GET | `/api/v1/customer/payments/:orderId/status` | Poll payment status |
@@ -269,7 +294,6 @@ Marketplacehub/
 | CRUD | `/api/v1/vendor/products` | Product management |
 | GET | `/api/v1/vendor/orders` | Orders list (includes payment) |
 | POST | `/api/v1/vendor/orders/:id/confirm` | Confirm order (after payment) |
-| POST | `/api/v1/vendor/orders/:id/ship` | Mark shipped |
 | POST | `/api/v1/vendor/orders/:id/deliver` | Mark delivered |
 | POST | `/api/v1/vendor/orders/:id/confirm-payment` | Vendor confirms received payment |
 | POST | `/api/v1/vendor/orders/:id/reject-payment` | Reject payment → cancel + refund |
@@ -292,21 +316,13 @@ Marketplacehub/
 
 2. **`$request->validated()`**: Doesn't exist on the base Laravel `Request` class — only on `FormRequest`. Always use the return value: `$validated = $request->validate([...])`.
 
-3. **Summary API key names**: `OrderService::calculateSummary` returns `shipping_fee` and `tax_amount` (snake_case). Frontend must use these exact keys.
+3. **Summary API key names**: `OrderService::calculateSummary` returns `tax_amount` and `discount` (snake_case). Frontend must use these exact keys.
 
 4. **Cart eager load for checkout**: `CartService::getCart` must load `items.product.shop:id,name,slug` so the checkout page can fetch shop QR codes immediately without a second cart query.
 
 5. **`z.coerce.number()`**: HTML radio inputs always submit strings. Use `z.coerce.number()` in Zod schemas for `address_id` and any numeric radio input.
 
 6. **Order relationship**: `Order` model uses `customer()` (not `user()`) as the relationship name for the buyer. Frontend must access `order.customer.name`, not `order.user.name`.
-
----
-
-## Tax & Shipping
-
-- **Shipping**: $2.00 flat fee per shop (multi-vendor orders each get $2)
-- **Tax**: 0.5% of subtotal (`taxRate = 0.005`)
-- Both displayed in checkout order summary
 
 ---
 
@@ -347,4 +363,4 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 
 ---
 
-*Last updated: 2026-06-23*
+*Last updated: 2026-06-25*

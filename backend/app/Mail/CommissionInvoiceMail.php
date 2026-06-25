@@ -22,7 +22,7 @@ class CommissionInvoiceMail extends Mailable
         $months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
         return new Envelope(
-            subject: "Commission Invoice — {$months[$month - 1]} {$year} — MarketplaceHub",
+            subject: "Commission Invoice — {$months[$month - 1]} {$year} — CamCart",
         );
     }
 

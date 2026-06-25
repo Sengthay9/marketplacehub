@@ -15,8 +15,11 @@ export function useAuth() {
       authService.login(identifier, password),
     onSuccess: (data) => {
       setAuth(data.user, data.token);
+      if (data.force_password_change) {
+        router.push("/set-password");
+        return;
+      }
       toast.success("Welcome back!");
-      // Redirect by role
       const redirects: Record<string, string> = {
         admin:    "/admin/dashboard",
         vendor:   "/vendor/dashboard",

@@ -15,7 +15,7 @@ class AutoCalculateCommissions extends Command
     protected $signature   = 'commissions:auto-calculate';
     protected $description = 'Auto-calculate 15% commission for each shop every 30 days from their join date.';
 
-    private const RATE = 0.15;
+    private const RATE = 0.05;
 
     public function handle(NotificationService $notifications): void
     {
@@ -74,7 +74,7 @@ class AutoCalculateCommissions extends Command
             try {
                 $notifications->send($shop->owner, 'commission_due', [
                     'title'   => 'Commission Invoice Due',
-                    'message' => "Your 30-day commission of $" . number_format($commission, 2) . " (15% of \$$" . number_format($gross, 2) . " revenue) is now due to MarketplaceHub.",
+                    'message' => "Your 30-day commission of $" . number_format($commission, 2) . " (5% of \$$" . number_format($gross, 2) . " revenue) is now due to CamCart.",
                     'data'    => ['shop_id' => $shop->id, 'cycle' => $cycleKey],
                 ]);
             } catch (\Throwable $e) {

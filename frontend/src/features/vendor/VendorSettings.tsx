@@ -1,36 +1,34 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import Link from "next/link";
+import {
+  Settings, Sun, Moon, Monitor, Languages,
+  CreditCard, Lock, KeyRound,
+} from "lucide-react";
 import api from "@/lib/axios";
+import type { Lang } from "@/lib/i18n";
+import { useLangStore } from "@/store/lang.store";
 import { useAuthStore } from "@/store/auth.store";
 import VendorLayout from "@/components/layout/dashboards/VendorLayout";
-import VendorPaymentQr from "./VendorPaymentQr";
 
 export default function VendorSettings() {
-  const router = useRouter();
-  const clearAuth = useAuthStore((s) => s.clearAuth);
-  const qc = useQueryClient();
+  const { theme, setTheme } = useTheme();
+  const { lang, setLang }   = useLangStore();
+  const { user }            = useAuthStore();
 
+  /* ── Profile data ── */
   const { data: me } = useQuery({
     queryKey: ["vendor-me"],
     queryFn: async () => (await api.get("/auth/me")).data.user,
   });
 
-  const [profileForm, setProfileForm] = useState({ name: "", phone: "" });
-  const [pwForm, setPwForm] = useState({ current_password: "", password: "", password_confirmation: "" });
-  const [editingProfile, setEditingProfile] = useState(false);
-
-  const updateProfileMutation = useMutation({
-    mutationFn: (d: typeof profileForm) => api.put("/me/profile", d),
-    onSuccess: () => {
-      toast.success("Profile updated!");
-      setEditingProfile(false);
-      qc.invalidateQueries({ queryKey: ["vendor-me"] });
-    },
-    onError: () => toast.error("Failed to update profile."),
+  /* ── Change password ── */
+  const [pwForm, setPwForm] = useState({
+    current_password: "", password: "", password_confirmation: "",
   });
 
   const changePwMutation = useMutation({
@@ -39,92 +37,178 @@ export default function VendorSettings() {
       toast.success("Password changed!");
       setPwForm({ current_password: "", password: "", password_confirmation: "" });
     },
-    onError: () => toast.error("Incorrect current password or validation failed."),
+    onError: (e: any) => {
+      const errs  = e?.response?.data?.errors;
+      const first = errs ? Object.values(errs).flat()[0] : null;
+      toast.error((first as string) ?? "Incorrect current password or validation failed.");
+    },
   });
 
-  const logoutMutation = useMutation({
-    mutationFn: () => api.post("/auth/logout"),
-    onSuccess: () => {
-      clearAuth();
-      router.push("/login");
-    },
+  /* ── Forgot password ── */
+  const forgotMutation = useMutation({
+    mutationFn: () => api.post("/auth/forgot-password", { email: me?.email ?? user?.email }),
+    onSuccess: () => toast.success(`Password reset link sent to ${me?.email ?? user?.email}`),
+    onError: () => toast.error("Failed to send reset link."),
   });
 
   return (
     <VendorLayout title="Settings">
-      <div className="max-w-3xl space-y-10">
+      <div className="max-w-2xl space-y-6">
 
-        {/* Payment QR Codes */}
+        {/* ── Vendor Profile ── */}
         <div className="bg-card border rounded-2xl p-6">
-          <VendorPaymentQr />
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 bg-primary/10 rounded-xl flex items-center justify-center">
+              <Settings className="w-4 h-4 text-primary" />
+            </div>
+            <h3 className="font-bold">Vendor Profile</h3>
+          </div>
+
+          <div className="space-y-0 text-sm">
+            {[
+              { label: "Name",     value: me?.name     ?? "—" },
+              { label: "Username", value: me?.username ?? "—" },
+              { label: "Phone",    value: me?.phone    || "—" },
+              { label: "Gmail",    value: me?.email    ?? "—" },
+            ].map(({ label, value }, i, arr) => (
+              <div
+                key={label}
+                className={`flex justify-between py-2.5 ${i < arr.length - 1 ? "border-b" : ""}`}
+              >
+                <span className="text-muted-foreground">{label}</span>
+                <span className="font-medium">{value}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Profile */}
+        {/* ── Appearance: theme + language ── */}
         <div className="bg-card border rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold">Profile</h2>
-            {!editingProfile && (
-              <button onClick={() => { setProfileForm({ name: me?.name ?? "", phone: me?.phone ?? "" }); setEditingProfile(true); }}
-                className="text-sm text-primary hover:underline">Edit</button>
-            )}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 bg-purple-50 rounded-xl flex items-center justify-center">
+              <Sun className="w-4 h-4 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-bold">Appearance</h3>
+              <p className="text-xs text-muted-foreground">Theme and display language</p>
+            </div>
           </div>
-          {editingProfile ? (
-            <form onSubmit={(e) => { e.preventDefault(); updateProfileMutation.mutate(profileForm); }} className="space-y-3">
-              {([["name", "Name", "text"], ["phone", "Phone", "tel"]] as const).map(([key, label, type]) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium mb-1">{label}</label>
-                  <input type={type} value={profileForm[key as keyof typeof profileForm]}
-                    onChange={(e) => setProfileForm((f) => ({ ...f, [key]: e.target.value }))}
-                    className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                </div>
+
+          {/* Theme */}
+          <div className="mb-5">
+            <p className="text-xs font-medium mb-3">Theme</p>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: "light",  label: "Light",  Icon: Sun     },
+                { value: "dark",   label: "Dark",   Icon: Moon    },
+                { value: "system", label: "System", Icon: Monitor },
+              ].map(({ value, label, Icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setTheme(value)}
+                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition ${
+                    theme === value
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-border text-muted-foreground hover:border-muted-foreground"
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  {label}
+                </button>
               ))}
-              <div className="flex gap-3 pt-1">
-                <button type="submit" className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90">Save</button>
-                <button type="button" onClick={() => setEditingProfile(false)} className="px-5 py-2.5 bg-muted rounded-xl text-sm font-medium hover:bg-muted/80">Cancel</button>
+            </div>
+          </div>
+
+          {/* Language */}
+          <div>
+            <p className="text-xs font-medium mb-3">Language</p>
+            <div className="relative">
+              <Languages className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value as Lang)}
+                className="w-full pl-9 pr-4 py-2.5 text-sm border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-ring appearance-none"
+              >
+                <option value="en">English</option>
+                <option value="km">ភាសាខ្មែរ (Khmer)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Payment ── */}
+        <div className="bg-card border rounded-2xl p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-primary" />
               </div>
-            </form>
-          ) : (
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-muted-foreground">Name</span><span className="font-medium">{me?.name ?? "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">{me?.email ?? "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><span className="font-medium">{me?.phone || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Role</span>
-                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 capitalize">{me?.role}</span>
+              <div>
+                <h3 className="font-bold">Payment</h3>
+                <p className="text-sm text-muted-foreground">Manage your Bakong payout account &amp; KHQR</p>
               </div>
             </div>
-          )}
+            <Link
+              href="/vendor/payment"
+              className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition"
+            >
+              Manage
+            </Link>
+          </div>
         </div>
 
-        {/* Change Password */}
+        {/* ── Change Password + Forgot Password ── */}
         <div className="bg-card border rounded-2xl p-6">
-          <h2 className="font-semibold mb-4">Change Password</h2>
-          <form onSubmit={(e) => { e.preventDefault(); changePwMutation.mutate(pwForm); }} className="space-y-3">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-8 h-8 bg-orange-50 rounded-xl flex items-center justify-center">
+              <Lock className="w-4 h-4 text-orange-600" />
+            </div>
+            <div>
+              <h3 className="font-bold">Change Password</h3>
+              <p className="text-xs text-muted-foreground">Update your account password</p>
+            </div>
+          </div>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); changePwMutation.mutate(pwForm); }}
+            className="space-y-3"
+          >
             {([
-              ["current_password", "Current Password"],
-              ["password", "New Password"],
+              ["current_password",      "Current Password"],
+              ["password",              "New Password"],
               ["password_confirmation", "Confirm New Password"],
             ] as const).map(([key, label]) => (
               <div key={key}>
                 <label className="block text-sm font-medium mb-1">{label}</label>
-                <input type="password" value={pwForm[key as keyof typeof pwForm]}
+                <input
+                  type="password"
+                  value={pwForm[key]}
                   onChange={(e) => setPwForm((f) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                  className="w-full border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
               </div>
             ))}
-            <button type="submit" className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 mt-1">
-              Update Password
-            </button>
-          </form>
-        </div>
 
-        {/* Sign Out */}
-        <div className="bg-card border rounded-2xl p-6">
-          <h2 className="font-semibold mb-2">Session</h2>
-          <p className="text-sm text-muted-foreground mb-4">Signed in as <span className="font-medium">{me?.email}</span></p>
-          <button onClick={() => logoutMutation.mutate()}
-            className="px-5 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 transition">
-            Sign Out
-          </button>
+            <div className="flex items-center gap-4 pt-1">
+              <button
+                type="submit"
+                disabled={changePwMutation.isPending}
+                className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
+              >
+                Update Password
+              </button>
+
+              <button
+                type="button"
+                onClick={() => forgotMutation.mutate()}
+                disabled={forgotMutation.isPending}
+                className="flex items-center gap-1.5 text-sm text-primary hover:underline disabled:opacity-60"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {forgotMutation.isPending ? "Sending…" : "Forgot password?"}
+              </button>
+            </div>
+          </form>
         </div>
 
       </div>

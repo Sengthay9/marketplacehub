@@ -13,8 +13,8 @@ class Coupon extends Model
 
     protected $fillable = [
         'shop_id', 'code', 'description', 'type', 'value',
-        'min_order_amount', 'max_discount', 'usage_limit', 'used_count',
-        'starts_at', 'expires_at', 'is_active',
+        'min_order_amount', 'max_discount', 'usage_limit', 'usage_limit_per_user', 'used_count',
+        'new_customers_only', 'starts_at', 'expires_at', 'is_active', 'fully_used_at',
     ];
 
     protected function casts(): array
@@ -25,7 +25,9 @@ class Coupon extends Model
             'max_discount'      => 'decimal:2',
             'starts_at'         => 'datetime',
             'expires_at'        => 'datetime',
-            'is_active'         => 'boolean',
+            'fully_used_at'     => 'datetime',
+            'new_customers_only' => 'boolean',
+            'is_active'          => 'boolean',
         ];
     }
 

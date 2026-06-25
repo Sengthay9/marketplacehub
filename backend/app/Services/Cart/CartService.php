@@ -40,6 +40,16 @@ class CartService
 
         $cart = Cart::firstOrCreate(['user_id' => $userId]);
 
+        // Single-shop restriction
+        $firstItem = $cart->items()->join('products', 'cart_items.product_id', '=', 'products.id')
+            ->selectRaw('products.shop_id as shop_id')
+            ->first();
+        if ($firstItem && (int) $firstItem->shop_id !== (int) $product->shop_id) {
+            throw ValidationException::withMessages([
+                'shop' => 'Your cart already has items from another shop. Clear your cart to add items from this shop.',
+            ]);
+        }
+
         $existing = CartItem::where([
             'cart_id'    => $cart->id,
             'product_id' => $product->id,

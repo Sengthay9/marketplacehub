@@ -9,6 +9,8 @@ class ProductImage extends Model
 {
     protected $fillable = ['product_id', 'path', 'is_primary', 'sort_order'];
 
+    protected $appends = ['url'];
+
     protected function casts(): array
     {
         return ['is_primary' => 'boolean'];
@@ -16,9 +18,12 @@ class ProductImage extends Model
 
     public function getUrlAttribute(): string
     {
-        return str_starts_with($this->path, 'http')
-            ? $this->path
-            : asset('storage/' . $this->path);
+        // Strip any host prefix so the URL is always root-relative (/storage/...)
+        $path = preg_replace('#^https?://[^/]+#', '', $this->path);
+        if (!str_starts_with($path, '/')) {
+            $path = '/storage/' . $path;
+        }
+        return $path;
     }
 
     public function product(): BelongsTo { return $this->belongsTo(Product::class); }

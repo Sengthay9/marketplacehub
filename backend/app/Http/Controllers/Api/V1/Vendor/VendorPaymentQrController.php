@@ -13,7 +13,7 @@ class VendorPaymentQrController extends Controller
     private function getShop(Request $request)
     {
         $shop = $request->user()->shop;
-        abort_unless($shop && $shop->status === 'approved', 403, 'Shop not found or not approved.');
+        abort_unless($shop && in_array($shop->status, ['approved', 'closed']), 403, 'Shop not found or not approved.');
         return $shop;
     }
 

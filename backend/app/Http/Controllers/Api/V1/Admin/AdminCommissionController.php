@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Mail;
 
 class AdminCommissionController extends Controller
 {
-    private const RATE = 0.15;
+    private const RATE = 0.05;
 
     public function index(Request $request): JsonResponse
     {

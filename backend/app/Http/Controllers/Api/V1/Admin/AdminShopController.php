@@ -66,24 +66,30 @@ class AdminShopController extends Controller
         $request->validate(['reason' => 'required|string|max:500']);
         $shop = Shop::with('owner')->findOrFail($id);
 
-        try { $shop->owner?->notify(new UserModerationNotification('warn', $request->reason)); } catch (\Throwable) {}
+        if ($shop->owner) {
+            $this->notificationService->send($shop->owner, 'shop_warned', [
+                'title'   => 'Warning: Your Shop',
+                'message' => "Your shop '{$shop->name}' has received a warning from admin: " . $request->input('reason') . ". Please review our community guidelines.",
+                'data'    => ['shop_id' => $shop->id],
+            ]);
+        }
 
         return response()->json(['message' => "Warning sent to {$shop->name}."]);
     }
 
     public function suspend(Request $request, int $id): JsonResponse
     {
-        $request->validate([
-            'reason' => 'required|string|max:500',
-            'days'   => 'nullable|integer|min:1|max:365',
-        ]);
+        $request->validate(['reason' => 'required|string|max:500', 'days' => 'nullable|integer|min:1|max:365']);
         $shop = Shop::with('owner')->findOrFail($id);
-        $shop->update(['status' => 'suspended', 'rejection_reason' => $request->reason]);
+        $shop->update(['status' => 'suspended', 'rejection_reason' => $request->input('reason')]);
 
-        $days  = $request->integer('days', 0);
-        $until = $days > 0 ? now()->addDays($days)->toDateString() : null;
-
-        try { $shop->owner?->notify(new UserModerationNotification('suspend', $request->reason, $until)); } catch (\Throwable) {}
+        if ($shop->owner) {
+            $this->notificationService->send($shop->owner, 'shop_suspended', [
+                'title'   => 'Your Shop Has Been Suspended',
+                'message' => "Your shop '{$shop->name}' has been suspended. Reason: " . $request->input('reason'),
+                'data'    => ['shop_id' => $shop->id],
+            ]);
+        }
 
         return response()->json(['message' => "Shop '{$shop->name}' suspended.", 'shop' => $shop]);
     }
@@ -92,9 +98,15 @@ class AdminShopController extends Controller
     {
         $request->validate(['reason' => 'required|string|max:500']);
         $shop = Shop::with('owner')->findOrFail($id);
-        $shop->update(['status' => 'banned', 'rejection_reason' => $request->reason]);
+        $shop->update(['status' => 'banned', 'rejection_reason' => $request->input('reason')]);
 
-        try { $shop->owner?->notify(new UserModerationNotification('ban', $request->reason)); } catch (\Throwable) {}
+        if ($shop->owner) {
+            $this->notificationService->send($shop->owner, 'shop_banned', [
+                'title'   => 'Your Shop Has Been Banned',
+                'message' => "Your shop '{$shop->name}' has been permanently banned. Reason: " . $request->input('reason'),
+                'data'    => ['shop_id' => $shop->id],
+            ]);
+        }
 
         return response()->json(['message' => "Shop '{$shop->name}' has been permanently banned."]);
     }
@@ -104,7 +116,13 @@ class AdminShopController extends Controller
         $shop = Shop::with('owner')->findOrFail($id);
         $shop->update(['status' => 'approved', 'rejection_reason' => null]);
 
-        try { $shop->owner?->notify(new UserModerationNotification('unban', 'Your shop has been restored.')); } catch (\Throwable) {}
+        if ($shop->owner) {
+            $this->notificationService->send($shop->owner, 'shop_restored', [
+                'title'   => 'Your Shop Has Been Restored',
+                'message' => "Your shop '{$shop->name}' has been restored and is now active.",
+                'data'    => ['shop_id' => $shop->id],
+            ]);
+        }
 
         return response()->json(['message' => "Shop '{$shop->name}' has been restored."]);
     }

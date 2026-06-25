@@ -127,34 +127,41 @@ export default function AdminVendorKyc() {
               <div className="space-y-2 text-sm mb-4">
                 {[
                   ["Full Name", detail.full_name],
-                  ["Email", detail.user?.email],
-                  ["DOB", detail.date_of_birth],
-                  ["Gender", detail.gender],
-                  ["ID Number", detail.id_number],
-                  ["Address", detail.address],
-                  ["City", detail.city],
-                  ["Province", detail.province || "—"],
-                  ["Applied", formatDate(detail.created_at)],
+                  ["Email",     detail.user?.email],
+                  ["Phone",     detail.user?.phone || "—"],
+                  ["DOB",       detail.date_of_birth],
+                  ["Gender",    detail.gender],
+                  ["Address",   detail.address],
+                  ["City",      detail.city || "—"],
+                  ["Province",  detail.province || "—"],
+                  ["Purpose",   detail.purpose || "—"],
+                  ["Applied",   formatDate(detail.created_at)],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between border-b py-1.5 last:border-0">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium capitalize">{value}</span>
+                    <span className="text-muted-foreground shrink-0">{label}</span>
+                    <span className="font-medium text-right ml-2 break-all">{value}</span>
                   </div>
                 ))}
               </div>
 
-              {/* ID Images */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
+              {/* ID Images + Selfie */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
                 {detail.id_card_front && (
                   <a href={detail.id_card_front} target="_blank" rel="noopener" className="block rounded-lg overflow-hidden border">
-                    <img src={detail.id_card_front} alt="ID Front" className="w-full h-28 object-cover" />
-                    <p className="text-xs text-center py-1 text-muted-foreground">Front</p>
+                    <img src={detail.id_card_front} alt="ID Front" className="w-full h-24 object-cover" />
+                    <p className="text-xs text-center py-1 text-muted-foreground">ID Front</p>
                   </a>
                 )}
                 {detail.id_card_back && (
                   <a href={detail.id_card_back} target="_blank" rel="noopener" className="block rounded-lg overflow-hidden border">
-                    <img src={detail.id_card_back} alt="ID Back" className="w-full h-28 object-cover" />
-                    <p className="text-xs text-center py-1 text-muted-foreground">Back</p>
+                    <img src={detail.id_card_back} alt="ID Back" className="w-full h-24 object-cover" />
+                    <p className="text-xs text-center py-1 text-muted-foreground">ID Back</p>
+                  </a>
+                )}
+                {detail.selfie_with_id && (
+                  <a href={detail.selfie_with_id} target="_blank" rel="noopener" className="block rounded-lg overflow-hidden border">
+                    <img src={detail.selfie_with_id} alt="Selfie" className="w-full h-24 object-cover" />
+                    <p className="text-xs text-center py-1 text-muted-foreground">Selfie</p>
                   </a>
                 )}
               </div>

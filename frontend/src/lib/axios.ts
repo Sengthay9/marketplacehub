@@ -1,4 +1,5 @@
 import axios from "axios";
+import { useAuthStore } from "@/store/auth.store";
 
 const api = axios.create({
   baseURL: "/api/v1",
@@ -19,12 +20,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 globally
+// Handle 401 globally — clear BOTH the token AND the Zustand auth state so
+// isAuthenticated becomes false and no further auth-gated queries fire.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("mh_token");
+      useAuthStore.getState().clearAuth();
       window.location.href = "/login";
     }
     return Promise.reject(error);

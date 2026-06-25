@@ -4,11 +4,13 @@ export type UserRole = "admin" | "vendor" | "customer";
 export interface User {
   id: number;
   name: string;
+  username?: string;
   email: string;
   phone?: string;
   avatar?: string;
   role: UserRole;
   email_verified: boolean;
+  force_password_change?: boolean;
   shop?: Shop;
   created_at: string;
 }
@@ -147,7 +149,7 @@ export interface Cart {
 // ─────────────── Order ───────────────
 export type OrderStatus =
   | "pending" | "confirmed" | "processing"
-  | "shipped" | "delivered" | "cancelled" | "refunded";
+  | "delivered" | "cancelled" | "refunded";
 
 export interface OrderItem {
   id: number;
@@ -172,7 +174,6 @@ export interface Order {
   subtotal: number;
   discount_amount: number;
   tax_amount: number;
-  shipping_fee: number;
   total: number;
   status: OrderStatus;
   tracking_number?: string;
@@ -183,7 +184,6 @@ export interface Order {
   payment?: Payment;
   created_at: string;
   confirmed_at?: string;
-  shipped_at?: string;
   delivered_at?: string;
   cancelled_at?: string;
 }
@@ -213,6 +213,8 @@ export interface Address {
   country: string;
   is_default: boolean;
   full_address?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 // ─────────────── Review ───────────────
@@ -241,6 +243,8 @@ export interface Coupon {
   min_order_amount: number;
   max_discount?: number;
   usage_limit?: number;
+  usage_limit_per_user?: number;
+  new_customers_only: boolean;
   used_count: number;
   starts_at?: string;
   expires_at?: string;
@@ -262,7 +266,6 @@ export interface AppNotification {
 // ─────────────── Checkout ───────────────
 export interface CheckoutSummary {
   subtotal: number;
-  shipping_fee: number;
   tax_amount: number;
   discount: number;
   total: number;

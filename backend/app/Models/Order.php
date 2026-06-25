@@ -14,9 +14,9 @@ class Order extends Model
 
     protected $fillable = [
         'order_number', 'user_id', 'shop_id', 'address_id', 'coupon_id',
-        'subtotal', 'discount_amount', 'tax_amount', 'shipping_fee', 'total',
-        'status', 'tracking_number', 'notes',
-        'confirmed_at', 'shipped_at', 'delivered_at', 'cancelled_at',
+        'subtotal', 'discount_amount', 'tax_amount', 'platform_fee', 'total',
+        'status', 'notes',
+        'confirmed_at', 'delivered_at', 'cancelled_at',
     ];
 
     protected function casts(): array
@@ -25,10 +25,9 @@ class Order extends Model
             'subtotal'        => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount'      => 'decimal:2',
-            'shipping_fee'    => 'decimal:2',
+            'platform_fee'    => 'decimal:2',
             'total'           => 'decimal:2',
             'confirmed_at'    => 'datetime',
-            'shipped_at'      => 'datetime',
             'delivered_at'    => 'datetime',
             'cancelled_at'    => 'datetime',
         ];

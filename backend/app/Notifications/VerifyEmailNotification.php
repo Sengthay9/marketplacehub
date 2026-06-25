@@ -22,7 +22,7 @@ class VerifyEmailNotification extends Notification
             . '&hash=' . sha1($notifiable->email);
 
         return (new MailMessage)
-            ->subject('Verify Your Email – MarketplaceHub')
+            ->subject('Verify Your Email – CamCart')
             ->greeting("Hi {$notifiable->name},")
             ->line('Please click the button below to verify your email address.')
             ->action('Verify Email', $verifyUrl)

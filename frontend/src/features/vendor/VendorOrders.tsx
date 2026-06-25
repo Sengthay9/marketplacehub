@@ -1,77 +1,190 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, DollarSign } from "lucide-react";
+import { ShoppingBag, CheckCircle, XCircle, MapPin, ChevronDown, ChevronUp } from "lucide-react";
 import api from "@/lib/axios";
 import { formatCurrency } from "@/lib/utils";
 import VendorLayout from "@/components/layout/dashboards/VendorLayout";
 
-const ORDER_STATUS_COLORS: Record<string, string> = {
+/* ─── Read-only map pinned at customer's saved location ─── */
+function OrderLocationMap({ lat, lng }: { lat: number; lng: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || mapRef.current || !containerRef.current) return;
+
+    import("leaflet").then((L) => {
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconUrl:       "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      });
+
+      const map = L.map(containerRef.current!, { zoomControl: true, dragging: true, scrollWheelZoom: false })
+        .setView([lat, lng], 15);
+      mapRef.current = map;
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+        maxZoom: 19,
+      }).addTo(map);
+
+      L.marker([lat, lng]).addTo(map);
+    });
+
+    return () => { mapRef.current?.remove(); mapRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-52 rounded-xl border overflow-hidden"
+      style={{ minHeight: 208 }}
+    />
+  );
+}
+
+/* ─── Expanded order detail panel ─── */
+function OrderDetail({ order }: { order: any }) {
+  const address = order.address;
+  const hasMap  = address?.latitude && address?.longitude;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Items */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+          Items Ordered
+        </p>
+        <div className="space-y-2">
+          {order.items?.map((item: any) => (
+            <div key={item.id} className="flex justify-between items-start text-sm">
+              <div>
+                <p className="font-medium">{item.product_name}</p>
+                {item.variant_info && (
+                  <p className="text-xs text-muted-foreground">{item.variant_info}</p>
+                )}
+                <p className="text-xs text-muted-foreground">× {item.quantity}</p>
+              </div>
+              <span className="font-medium whitespace-nowrap">{formatCurrency(item.total_price)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 pt-3 border-t space-y-1 text-sm">
+          <div className="flex justify-between text-muted-foreground">
+            <span>Subtotal</span><span>{formatCurrency(order.subtotal)}</span>
+          </div>
+          {Number(order.discount_amount) > 0 && (
+            <div className="flex justify-between text-green-600">
+              <span>Discount</span><span>-{formatCurrency(order.discount_amount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-semibold border-t pt-1">
+            <span>Total</span><span>{formatCurrency(order.total)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Address + Map */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+          Delivery Location
+        </p>
+        {address ? (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 text-sm">
+              <MapPin className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium">{address.recipient_name}</p>
+                {address.phone && <p className="text-muted-foreground text-xs">{address.phone}</p>}
+                <p className="text-muted-foreground text-xs mt-0.5">
+                  {[address.street, address.city, address.state, address.country]
+                    .filter(Boolean).join(", ")}
+                </p>
+              </div>
+            </div>
+            {hasMap ? (
+              <OrderLocationMap lat={address.latitude} lng={address.longitude} />
+            ) : (
+              <div className="h-52 rounded-xl border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
+                No map coordinates saved
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="h-52 rounded-xl border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
+            No delivery address provided
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Status config ─── */
+const STATUS_COLORS: Record<string, string> = {
   pending:    "bg-yellow-100 text-yellow-700",
   confirmed:  "bg-blue-100 text-blue-700",
   processing: "bg-indigo-100 text-indigo-700",
-  shipped:    "bg-purple-100 text-purple-700",
   delivered:  "bg-green-100 text-green-700",
   cancelled:  "bg-red-100 text-red-700",
   refunded:   "bg-orange-100 text-orange-700",
 };
 
-const PAYMENT_STATUS_COLORS: Record<string, string> = {
-  pending:   "bg-yellow-50 text-yellow-600 border-yellow-200",
-  completed: "bg-green-50 text-green-700 border-green-200",
-  failed:    "bg-red-50 text-red-600 border-red-200",
-  refunded:  "bg-orange-50 text-orange-600 border-orange-200",
-};
-
-const PAYMENT_LABELS: Record<string, string> = {
-  cod:     "COD",
-  aba:     "ABA",
-  bakong:  "Bakong",
-  acleda:  "ACLEDA",
-  card:    "Card",
+const STATUS_LABEL: Record<string, string> = {
+  pending:    "Pending",
+  confirmed:  "Confirmed",
+  processing: "Processing",
+  delivered:  "Delivered",
+  cancelled:  "Cancelled",
+  refunded:   "Refunded",
 };
 
 const STATUS_FILTERS = [
   { value: "all",       label: "All" },
-  { value: "pending",   label: "New Order" },
+  { value: "pending",   label: "Pending" },
   { value: "confirmed", label: "Confirmed" },
-  { value: "shipped",   label: "Shipped" },
   { value: "delivered", label: "Delivered" },
   { value: "cancelled", label: "Cancelled" },
 ];
 
+/* ─── Main component ─── */
 export default function VendorOrders() {
   const qc = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("all");
+  const [page, setPage]         = useState(1);
+  const [status, setStatus]     = useState("all");
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["vendor-orders", page, status],
-    queryFn: async () => {
-      const res = await api.get("/vendor/orders", {
-        params: { page, status: status !== "all" ? status : undefined },
-      });
-      return res.data;
-    },
+    queryFn: async () => (await api.get("/vendor/orders", {
+      params: { page, status: status !== "all" ? status : undefined },
+    })).data,
   });
 
-  const orderAction = (id: number, endpoint: string, label: string) =>
-    api.post(`/vendor/orders/${id}/${endpoint}`)
-      .then(() => { toast.success(`Order ${label}!`); qc.invalidateQueries({ queryKey: ["vendor-orders"] }); })
-      .catch(() => toast.error("Action failed."));
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["vendor-orders"] });
 
-  const confirmPaymentMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/vendor/orders/${id}/confirm-payment`),
-    onSuccess: () => { toast.success("Payment confirmed!"); qc.invalidateQueries({ queryKey: ["vendor-orders"] }); },
-    onError: () => toast.error("Failed to confirm payment."),
+  const confirmMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/vendor/orders/${id}/confirm`),
+    onSuccess: () => { toast.success("Order confirmed!"); invalidate(); },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed to confirm order."),
   });
 
-  const rejectPaymentMutation = useMutation({
+  const rejectMutation = useMutation({
     mutationFn: (id: number) => api.post(`/vendor/orders/${id}/reject-payment`),
-    onSuccess: () => { toast.success("Payment rejected — order cancelled, refund initiated."); qc.invalidateQueries({ queryKey: ["vendor-orders"] }); },
-    onError: () => toast.error("Failed to reject payment."),
+    onSuccess: () => { toast.success("Order rejected and cancelled."); invalidate(); },
+    onError: () => toast.error("Failed to reject order."),
+  });
+
+  const deliverMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/vendor/orders/${id}/deliver`),
+    onSuccess: () => { toast.success("Order marked as delivered."); invalidate(); },
+    onError: () => toast.error("Failed to update order."),
   });
 
   return (
@@ -79,117 +192,152 @@ export default function VendorOrders() {
       {/* Status filter tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
         {STATUS_FILTERS.map(({ value, label }) => (
-          <button key={value} onClick={() => { setStatus(value); setPage(1); }}
-            className={`px-3 py-1.5 rounded-xl text-sm font-medium capitalize transition ${
+          <button
+            key={value}
+            onClick={() => { setStatus(value); setPage(1); setExpanded(null); }}
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium transition ${
               status === value ? "bg-primary text-white" : "bg-muted hover:bg-muted/80"
-            }`}>
+            }`}
+          >
             {label}
           </button>
         ))}
       </div>
 
       {isLoading ? (
-        <div className="space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />)}</div>
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />
+          ))}
+        </div>
       ) : (
-        <div className="bg-card border rounded-2xl overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm min-w-[700px]">
-            <thead className="bg-muted/50">
+        <div className="border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[800px]">
+            <thead className="bg-muted/40 border-b">
               <tr>
-                <th className="text-left p-4 font-medium">Order #</th>
-                <th className="text-left p-4 font-medium">Customer</th>
-                <th className="text-left p-4 font-medium">Total</th>
-                <th className="text-left p-4 font-medium">Order Status</th>
-                <th className="text-left p-4 font-medium">Payment</th>
-                <th className="text-left p-4 font-medium">Date</th>
-                <th className="text-left p-4 font-medium">Actions</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">Customer</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">Total</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">QTY</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">Fee</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">Income</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">Status</th>
+                <th className="text-left px-6 py-4 font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
-              {data?.data?.length === 0 && (
-                <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No orders yet.</td></tr>
-              )}
-              {data?.data?.map((order: any) => {
-                const paymentStatus = order.payment?.status ?? "pending";
-                const paymentGateway = order.payment?.gateway ?? "cod";
-                const isQrPayment = ["aba", "bakong", "acleda"].includes(paymentGateway);
-                const paymentPending = paymentStatus === "pending" && order.status !== "cancelled";
+            <tbody>
+              {!(data?.data?.length > 0) ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-20 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+                        <ShoppingBag className="w-7 h-7 text-muted-foreground" />
+                      </div>
+                      <p className="font-semibold">No orders yet</p>
+                      <p className="text-sm text-muted-foreground">Orders from customers will appear here.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : data.data.map((order: any) => {
+                const totalQty   = order.items?.reduce((s: number, i: any) => s + i.quantity, 0) ?? 0;
+                const vendorGets = Number(order.total) - Number(order.platform_fee ?? 0);
+                const payStatus  = order.payment?.status ?? "pending";
+                const canConfirm = order.status === "pending" && payStatus === "completed";
+                const canDeliver = order.status === "confirmed";
+                const canReject  = ["pending", "confirmed"].includes(order.status);
+                const isExpanded = expanded === order.id;
 
                 return (
-                  <tr key={order.id} className="hover:bg-muted/30">
-                    <td className="p-4 font-mono font-medium">#{order.order_number ?? order.id}</td>
-                    <td className="p-4">
-                      <p className="font-medium">{order.customer?.name ?? "—"}</p>
-                      <p className="text-xs text-muted-foreground">{order.customer?.email}</p>
-                    </td>
-                    <td className="p-4 font-medium">{formatCurrency(order.total)}</td>
-                    <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${ORDER_STATUS_COLORS[order.status] ?? "bg-muted"}`}>
-                        {order.status === "pending" ? "New Order" : order.status}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground">{PAYMENT_LABELS[paymentGateway] ?? paymentGateway}</span>
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border w-fit ${PAYMENT_STATUS_COLORS[paymentStatus] ?? "bg-muted"}`}>
-                          {paymentStatus === "completed" ? "Paid" : paymentStatus === "refunded" ? "Refunded" : paymentStatus === "failed" ? "Failed" : "Awaiting"}
+                  <>
+                    <tr
+                      key={order.id}
+                      onClick={() => setExpanded(isExpanded ? null : order.id)}
+                      className={`border-t cursor-pointer transition-colors ${
+                        isExpanded ? "bg-muted/30" : "hover:bg-muted/20"
+                      }`}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          {isExpanded
+                            ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          }
+                          <div>
+                            <p className="font-medium leading-snug">{order.customer?.name ?? "—"}</p>
+                            <p className="text-xs text-muted-foreground">{order.customer?.email}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 font-semibold">{formatCurrency(order.total)}</td>
+
+                      <td className="px-6 py-4">
+                        {totalQty} item{totalQty !== 1 ? "s" : ""}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <span className="text-orange-600 font-medium">
+                          -{formatCurrency(order.platform_fee ?? 0)}
                         </span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
-                    <td className="p-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {/* Order status actions */}
-                        {order.status === "pending" && paymentStatus === "completed" && (
-                          <button onClick={() => orderAction(order.id, "confirm", "confirmed")}
-                            className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs hover:bg-blue-200">
-                            Confirm
-                          </button>
-                        )}
-                        {order.status === "confirmed" && (
-                          <button onClick={() => orderAction(order.id, "ship", "shipped")}
-                            className="px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-xs hover:bg-purple-200">
-                            Ship
-                          </button>
-                        )}
-                        {order.status === "shipped" && (
-                          <button onClick={() => orderAction(order.id, "deliver", "delivered")}
-                            className="px-2 py-1 bg-green-100 text-green-700 rounded-lg text-xs hover:bg-green-200">
-                            Deliver
-                          </button>
-                        )}
+                      </td>
 
-                        {/* Payment actions — for QR/bank or COD with pending payment */}
-                        {paymentPending && (
-                          <>
+                      <td className="px-6 py-4">
+                        <span className="text-green-600 font-semibold">{formatCurrency(vendorGets)}</span>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[order.status] ?? "bg-muted"}`}>
+                          {STATUS_LABEL[order.status] ?? order.status}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex gap-2 flex-wrap">
+                          {canConfirm && (
                             <button
-                              onClick={() => confirmPaymentMutation.mutate(order.id)}
-                              disabled={confirmPaymentMutation.isPending}
-                              title="Confirm payment received"
-                              className="p-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 disabled:opacity-50"
+                              onClick={() => confirmMutation.mutate(order.id)}
+                              disabled={confirmMutation.isPending}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap transition-colors"
                             >
-                              <CheckCircle className="w-3.5 h-3.5" />
+                              <CheckCircle className="w-3.5 h-3.5" /> Confirm Order
                             </button>
-                            {isQrPayment && (
-                              <button
-                                onClick={() => rejectPaymentMutation.mutate(order.id)}
-                                disabled={rejectPaymentMutation.isPending}
-                                title="Reject payment & cancel order"
-                                className="p-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 disabled:opacity-50"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </>
-                        )}
+                          )}
+                          {canDeliver && (
+                            <button
+                              onClick={() => deliverMutation.mutate(order.id)}
+                              disabled={deliverMutation.isPending}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50 whitespace-nowrap transition-colors"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Delivered
+                            </button>
+                          )}
+                          {canReject && (
+                            <button
+                              onClick={() => rejectMutation.mutate(order.id)}
+                              disabled={rejectMutation.isPending}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-medium hover:bg-red-100 disabled:opacity-50 whitespace-nowrap transition-colors"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Reject Order
+                            </button>
+                          )}
+                          {order.status === "delivered" && (
+                            <span className="text-xs text-green-600 font-medium">Completed</span>
+                          )}
+                          {order.status === "cancelled" && (
+                            <span className="text-xs text-red-500 font-medium">Cancelled</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
 
-                        {paymentStatus === "completed" && order.status === "pending" && !isQrPayment && (
-                          <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                            <DollarSign className="w-3 h-3" /> Paid
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                    {/* Expanded detail row */}
+                    {isExpanded && (
+                      <tr key={`${order.id}-detail`} className="border-t bg-muted/10">
+                        <td colSpan={7} className="px-8 py-6">
+                          <OrderDetail order={order} />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
@@ -199,11 +347,23 @@ export default function VendorOrders() {
 
       {data?.last_page > 1 && (
         <div className="flex justify-center gap-2 mt-4">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-            className="px-4 py-2 rounded-xl text-sm bg-muted hover:bg-muted/80 disabled:opacity-40">Previous</button>
-          <span className="px-4 py-2 text-sm text-muted-foreground">Page {page} of {data.last_page}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page === data.last_page}
-            className="px-4 py-2 rounded-xl text-sm bg-muted hover:bg-muted/80 disabled:opacity-40">Next</button>
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="px-4 py-2 rounded-xl text-sm bg-muted hover:bg-muted/80 disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="px-4 py-2 text-sm text-muted-foreground">
+            Page {page} of {data.last_page}
+          </span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page === data.last_page}
+            className="px-4 py-2 rounded-xl text-sm bg-muted hover:bg-muted/80 disabled:opacity-40"
+          >
+            Next
+          </button>
         </div>
       )}
     </VendorLayout>

@@ -46,4 +46,18 @@ class AuthController extends Controller
         $result = $this->authService->refreshToken($request->user());
         return response()->json($result);
     }
+
+    public function setPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $request->user()->update([
+            'password'              => $request->password,
+            'force_password_change' => false,
+        ]);
+
+        return response()->json(['message' => 'Password updated successfully.']);
+    }
 }

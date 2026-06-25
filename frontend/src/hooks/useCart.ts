@@ -31,7 +31,23 @@ export function useCart() {
       qc.setQueryData(["cart"], data);
       toast.success("Added to cart!");
     },
-    onError: () => toast.error("Could not add to cart."),
+    onError: (err: any, variables) => {
+      const shopError = err?.response?.data?.errors?.shop?.[0];
+      if (shopError) {
+        toast.error(shopError, {
+          action: {
+            label: "Clear & Add",
+            onClick: async () => {
+              await cartService.clear();
+              addItemMutation.mutate(variables);
+            },
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.error(err?.response?.data?.errors?.product?.[0] ?? "Could not add to cart.");
+      }
+    },
   });
 
   const updateItemMutation = useMutation({

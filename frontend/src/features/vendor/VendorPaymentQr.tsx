@@ -11,9 +11,8 @@ const BANK_OPTIONS = [
   { value: "aba",       label: "ABA Pay" },
   { value: "bakong",    label: "Bakong KHQR" },
   { value: "acleda",    label: "ACLEDA Pay" },
-  { value: "wing",      label: "Wing Money" },
-  { value: "truemoney", label: "TrueMoney" },
-  { value: "other",     label: "Other Bank" },
+  { value: "wing",  label: "Wing Money" },
+  { value: "other", label: "Other Bank" },
 ];
 
 interface QrCode {

@@ -36,7 +36,7 @@ class CategoryController extends Controller
         $category = Category::where('slug', $slug)->where('is_active', true)->firstOrFail();
 
         $query = Product::with(['shop:id,name,slug,logo', 'category:id,name,slug', 'images'])
-            ->where('status', 'published')
+            ->where('status', 'active')
             ->where('category_id', $category->id);
 
         if ($search = $request->input('q')) {

@@ -10,11 +10,16 @@ class Address extends Model
     protected $fillable = [
         'user_id', 'label', 'recipient_name', 'phone',
         'street', 'city', 'state', 'postal_code', 'country', 'is_default',
+        'latitude', 'longitude',
     ];
 
     protected function casts(): array
     {
-        return ['is_default' => 'boolean'];
+        return [
+            'is_default' => 'boolean',
+            'latitude'   => 'float',
+            'longitude'  => 'float',
+        ];
     }
 
     public function getFullAddressAttribute(): string

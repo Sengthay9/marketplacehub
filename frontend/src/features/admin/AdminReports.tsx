@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "@/lib/axios";
-import AdminLayout from "@/components/layout/dashboards/AdminLayout";
 
 type ReportStatus = "pending" | "reviewing" | "resolved" | "dismissed";
 
@@ -37,6 +36,9 @@ const REASON_LABELS: Record<string, { label: string; color: string }> = {
   misleading:    { label: "Misleading",    color: "bg-yellow-100 text-yellow-700" },
   scam:          { label: "Scam",          color: "bg-red-100 text-red-800" },
   poor_quality:  { label: "Poor Quality",  color: "bg-gray-100 text-gray-600" },
+  support:       { label: "Support",       color: "bg-blue-100 text-blue-700" },
+  question:      { label: "Question",      color: "bg-sky-100 text-sky-700" },
+  feedback:      { label: "Feedback",      color: "bg-purple-100 text-purple-700" },
   other:         { label: "Other",         color: "bg-muted text-muted-foreground" },
 };
 
@@ -341,11 +343,13 @@ export default function AdminReports() {
           role:   roleFilter   !== "all" ? roleFilter   : undefined,
         },
       });
+
       return res.data as {
         reports: { data: Report[]; total: number; from: number; to: number };
         counts: Record<string, number>;
       };
     },
+    placeholderData: (prev) => prev,
   });
 
   const counts  = data?.counts ?? {};
@@ -383,7 +387,7 @@ export default function AdminReports() {
   };
 
   return (
-    <AdminLayout title="Reports Inbox">
+    <>
       <div className="flex h-[calc(100vh-10rem)] rounded-2xl border bg-card overflow-hidden shadow-sm">
 
         {/* ── Sidebar ── */}
@@ -516,6 +520,6 @@ export default function AdminReports() {
           )}
         </div>
       </div>
-    </AdminLayout>
+    </>
   );
 }

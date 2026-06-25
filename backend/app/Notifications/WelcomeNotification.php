@@ -19,9 +19,9 @@ class WelcomeNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Welcome to MarketplaceHub!')
+            ->subject('Welcome to CamCart!')
             ->greeting("Hi {$notifiable->name},")
-            ->line('Welcome to MarketplaceHub — the multi-vendor marketplace for everyone.')
+            ->line('Welcome to CamCart — the multi-vendor marketplace for everyone.')
             ->line('Start browsing thousands of products from verified shops.')
             ->action('Start Shopping', config('app.url'))
             ->line('Thank you for joining us!');

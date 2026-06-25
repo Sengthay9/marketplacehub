@@ -12,7 +12,8 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Product::with(['shop:id,name,slug,logo', 'category:id,name,slug', 'images'])
-            ->where('status', 'published');
+            ->where('status', 'active')
+            ->whereHas('shop', fn ($q) => $q->where('status', 'approved'));
 
         // Search
         if ($search = $request->input('q')) {
@@ -66,7 +67,8 @@ class ProductController extends Controller
             'reviews' => fn ($q) => $q->with('user:id,name,avatar')->latest()->limit(10),
         ])
         ->where('slug', $slug)
-        ->where('status', 'published')
+        ->where('status', 'active')
+        ->whereHas('shop', fn ($q) => $q->where('status', 'approved'))
         ->firstOrFail();
 
         return response()->json(['product' => $product]);

@@ -16,6 +16,7 @@ import { orderService } from "@/services/order.service";
 import { formatCurrency } from "@/lib/utils";
 import { useCartStore } from "@/store/cart.store";
 import type { Address } from "@/types";
+import KhqrCard from "@/components/payment/KhqrCard";
 import CardInput, { type CardData } from "./CardInput";
 import SaveCardModal from "./SaveCardModal";
 import PaymentQRModal, { type ShopQrCode } from "./PaymentQRModal";
@@ -33,7 +34,7 @@ type FormData = z.infer<typeof schema>;
 
 const PAYMENT_METHODS = [
   { value: "cod",  label: "Cash on Delivery",     desc: "Pay when your order arrives",                 Icon: Banknote,   color: "text-green-600" },
-  { value: "qr",   label: "QR / Bank Transfer",   desc: "ABA, Bakong, ACLEDA — scan shop's QR code",  Icon: QrCode,     color: "text-blue-600",  badge: "QR" },
+  { value: "qr",   label: "Bakong KHQR",           desc: "Scan with ABA, ACLEDA, Wing or any Bakong app", Icon: QrCode, color: "text-blue-600", badge: "QR" },
   { value: "card", label: "Credit / Debit Card",  desc: "Visa, Mastercard, Amex, Discover",            Icon: CreditCard, color: "text-primary" },
 ] as const;
 
@@ -81,19 +82,16 @@ export default function CheckoutView() {
     queryFn: async () => (await api.get("/customer/cards")).data.data as any[],
   });
 
-  // Fetch the cart to know which shop(s) are in it, then fetch their QR codes
+  // Fetch the cart for item display
   const { data: cart } = useQuery({
     queryKey: ["cart"],
     queryFn: async () => (await api.get("/customer/cart")).data,
   });
 
-  // Get the first shop slug from cart items (single-shop QR flow)
-  const shopSlug: string | null = cart?.items?.[0]?.product?.shop?.slug ?? null;
-
-  const { data: shopQrCodes, isLoading: qrLoading } = useQuery({
-    queryKey: ["shop-qr", shopSlug],
-    queryFn: async () => (await api.get(`/shops/${shopSlug}/payment-qr`)).data.data as ShopQrCode[],
-    enabled: !!shopSlug,
+  // Fetch CamCart's platform Bakong account for QR payment
+  const { data: platformAccount, isLoading: qrLoading } = useQuery({
+    queryKey: ["platform-bank-account"],
+    queryFn: async () => (await api.get("/platform/bank-account")).data.data,
   });
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<FormData>({
@@ -113,7 +111,10 @@ export default function CheckoutView() {
   const applyCouponMutation = useMutation({
     mutationFn: () => orderService.applyCoupon(couponInput),
     onSuccess: () => { setAppliedCoupon(couponInput); toast.success("Coupon applied!"); },
-    onError: () => toast.error("Invalid or expired coupon."),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.errors?.coupon?.[0] ?? err?.response?.data?.message ?? "Invalid or expired coupon.";
+      toast.error(msg);
+    },
   });
 
   const deleteCardMutation = useMutation({
@@ -123,10 +124,9 @@ export default function CheckoutView() {
 
   const placeOrderMutation = useMutation({
     mutationFn: (data: FormData) => {
-      // Map internal 'qr' method to the actual bank gateway name
       const payload: any = { ...data, coupon_code: appliedCoupon };
-      if (data.payment_method === "qr" && selectedQr) {
-        payload.payment_method = selectedQr.bank_name; // aba | bakong | acleda | etc.
+      if (data.payment_method === "qr") {
+        payload.payment_method = "bakong";
       }
       return orderService.placeOrder(payload);
     },
@@ -166,312 +166,374 @@ export default function CheckoutView() {
 
   const hasSavedCards = savedCards && savedCards.length > 0;
 
-  // Auto-select first QR code when QR payment is chosen and codes are loaded
+  const [step, setStep] = useState<1 | 2>(1);
+
+  // Auto-set platform QR when QR payment is chosen
   useEffect(() => {
-    if (paymentMethod === "qr" && shopQrCodes?.length && !selectedQr) {
-      setSelectedQr(shopQrCodes[0]);
+    if (paymentMethod === "qr" && platformAccount && !selectedQr) {
+      setSelectedQr({
+        id: "platform",
+        bank_name: "bakong",
+        bank_label: "CamCart Pay (Bakong)",
+        currency: "usd",
+        qr_image_url: null,
+        khqr_string: platformAccount.khqr_string ?? null,
+        account_name: platformAccount.account_holder_name,
+        account_number: platformAccount.account_number ?? null,
+        phone_number: platformAccount.phone_number ?? null,
+        is_khqr: !!platformAccount.khqr_string,
+        is_platform: true,
+      });
     }
     if (paymentMethod !== "qr") {
       setSelectedQr(null);
     }
-  }, [paymentMethod, shopQrCodes]);
+  }, [paymentMethod, platformAccount]);
 
-  // Group shop QR codes by currency for display
-  const qrByUSD = shopQrCodes?.filter((q) => q.currency === "usd") ?? [];
-  const qrByKHR = shopQrCodes?.filter((q) => q.currency === "khr") ?? [];
+  const handleProceedToPayment = () => {
+    if (!selectedAddress) {
+      toast.error("Please select a delivery address.");
+      return;
+    }
+    setStep(2);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /* ─── Shared order summary panel ─── */
+  const OrderSummaryPanel = (
+    <div className="bg-card border rounded-2xl p-6">
+      <h2 className="font-bold mb-4">Order Summary</h2>
+
+      {/* Coupon */}
+      <div className="flex gap-2 mb-5">
+        <div className="flex-1 flex items-center border rounded-xl overflow-hidden">
+          <Tag className="w-4 h-4 text-muted-foreground ml-3 shrink-0" />
+          <input
+            value={couponInput}
+            onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+            placeholder="COUPON CODE"
+            className="flex-1 px-2 py-2.5 text-sm bg-transparent focus:outline-none"
+          />
+        </div>
+        <button type="button"
+          onClick={() => applyCouponMutation.mutate()}
+          disabled={!couponInput || applyCouponMutation.isPending}
+          className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+        >
+          Apply
+        </button>
+      </div>
+
+      {/* Item list */}
+      <div className="space-y-3 text-sm mb-4">
+        {cart?.items?.map((item: any) => (
+          <div key={item.id} className="flex justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="truncate font-medium leading-tight">{item.product?.name}</p>
+              {item.variant_info && (
+                <p className="text-[11px] text-muted-foreground">{item.variant_info}</p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                {item.quantity} × {formatCurrency(item.unit_price)}
+              </p>
+            </div>
+            <span className="shrink-0 font-medium">{formatCurrency(item.unit_price * item.quantity)}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Discount + Total */}
+      <div className="space-y-2 text-sm border-t pt-3">
+        {(summary?.discount ?? 0) > 0 && (
+          <div className="flex justify-between text-green-600">
+            <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Discount</span>
+            <span>-{formatCurrency(summary!.discount)}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-bold text-base pt-1">
+          <span>Total</span>
+          <span className="text-primary">{formatCurrency(summary?.total ?? 0)}</span>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <>
-      <form onSubmit={handleSubmit(onSubmit)} className="grid lg:grid-cols-2 gap-8">
-        {/* ── Left column ── */}
-        <div className="space-y-6">
-
-          {/* Delivery Address */}
-          <div className="bg-card border rounded-2xl p-6">
-            <h2 className="font-bold mb-4 flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-primary" /> Delivery Address
-            </h2>
-            {!addresses?.length ? (
-              <div className="text-center py-6 bg-muted/40 rounded-xl border-2 border-dashed">
-                <MapPin className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
-                <p className="text-muted-foreground text-sm mb-3">No delivery address saved yet.</p>
-                <a href="/account"
-                  className="inline-flex items-center gap-1 text-primary text-sm font-medium hover:underline">
-                  Add address in My Account <ArrowRight className="w-3.5 h-3.5" />
-                </a>
+      {/* Step indicator */}
+      <div className="flex items-center gap-3 mb-8">
+        {[
+          { n: 1, label: "Delivery & Summary" },
+          { n: 2, label: "Payment" },
+        ].map(({ n, label }, i) => (
+          <div key={n} className="flex items-center gap-3">
+            {i > 0 && <div className={`h-px w-8 ${step >= n ? "bg-primary" : "bg-border"}`} />}
+            <div className="flex items-center gap-2">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition ${
+                step > n ? "bg-primary text-white" : step === n ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+              }`}>
+                {step > n ? <Check className="w-3.5 h-3.5" /> : n}
               </div>
-            ) : (
-              <div className="space-y-3">
-                {addresses.map((addr) => (
-                  <label key={addr.id}
-                    className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
-                      selectedAddress === addr.id ? "border-primary bg-primary/5" : "hover:border-primary/40"
-                    }`}
-                  >
-                    <input type="radio" value={addr.id}
-                      {...register("address_id", { valueAsNumber: true })}
-                      className="mt-0.5" />
-                    <div>
-                      <p className="font-medium text-sm">{addr.label} — {addr.recipient_name}</p>
-                      <p className="text-xs text-muted-foreground">{addr.street}, {addr.city}</p>
-                      <p className="text-xs text-muted-foreground">{addr.phone}</p>
-                    </div>
-                  </label>
-                ))}
-                <a href="/account"
-                  className="flex items-center justify-center gap-2 w-full py-2.5 border-2 border-dashed rounded-xl text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
-                >
-                  <Plus className="w-4 h-4" /> Add a new address
-                </a>
-              </div>
-            )}
-            {errors.address_id && <p className="text-destructive text-xs mt-2">{errors.address_id.message}</p>}
-          </div>
-
-          {/* Payment Method */}
-          <div className="bg-card border rounded-2xl p-6">
-            <h2 className="font-bold mb-4 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary" /> Payment Method
-            </h2>
-
-            <div className="space-y-2 mb-4">
-              {PAYMENT_METHODS.map(({ value, label, desc, Icon, color, ...rest }) => (
-                <label key={value}
-                  className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
-                    paymentMethod === value ? "border-primary bg-primary/5" : "hover:border-primary/40"
-                  }`}
-                >
-                  <input type="radio" value={value} {...register("payment_method")} />
-                  <Icon className={`w-5 h-5 ${color} shrink-0`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{label}</span>
-                      {"badge" in rest && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${color} border-current`}>
-                          {(rest as any).badge}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{desc}</p>
-                  </div>
-                </label>
-              ))}
+              <span className={`text-sm font-medium hidden sm:block ${step === n ? "text-foreground" : "text-muted-foreground"}`}>
+                {label}
+              </span>
             </div>
+          </div>
+        ))}
+      </div>
 
-            {/* QR bank selector — shown when QR is selected */}
-            {paymentMethod === "qr" && (
-              <div className="mt-2 space-y-4">
-                {!shopQrCodes ? (
-                  <p className="text-sm text-muted-foreground">Loading available QR options…</p>
-                ) : shopQrCodes.length === 0 ? (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-800">
-                    This shop has not set up QR payment yet. Please choose another payment method.
+      <form onSubmit={handleSubmit(onSubmit)}>
+
+        {/* ══ STEP 1: Delivery & Summary ══ */}
+        {step === 1 && (
+          <div className="grid lg:grid-cols-2 gap-8">
+            {/* Left: Address + Notes */}
+            <div className="space-y-6">
+
+              {/* Delivery Address */}
+              <div className="bg-card border rounded-2xl p-6">
+                <h2 className="font-bold mb-4 flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-primary" /> Delivery Address
+                </h2>
+                {!addresses?.length ? (
+                  <div className="text-center py-6 bg-muted/40 rounded-xl border-2 border-dashed">
+                    <MapPin className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
+                    <p className="text-muted-foreground text-sm mb-3">No delivery address saved yet.</p>
+                    <a href="/account"
+                      className="inline-flex items-center gap-1 text-primary text-sm font-medium hover:underline">
+                      Add address in My Account <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
                   </div>
                 ) : (
-                  <>
-                    {[
-                      { label: "Pay in USD ($)", items: qrByUSD },
-                      { label: "Pay in KHR (៛)", items: qrByKHR },
-                    ].filter((g) => g.items.length > 0).map((group) => (
-                      <div key={group.label}>
-                        <p className="text-xs font-semibold text-muted-foreground mb-2">{group.label}</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {group.items.map((qr) => (
-                            <button
-                              key={qr.id}
-                              type="button"
-                              onClick={() => setSelectedQr(qr)}
-                              className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition text-left ${
-                                selectedQr?.id === qr.id
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border hover:border-primary/50"
-                              }`}
-                            >
-                              <div className="w-16 h-16 bg-white rounded-lg p-1 border flex items-center justify-center">
-                                <img
-                                  src={qr.qr_image_url}
-                                  alt={qr.bank_label}
-                                  className="w-full h-full object-contain rounded"
-                                  onError={(e) => { e.currentTarget.style.display = "none"; }}
-                                />
-                              </div>
-                              <div className="text-center">
-                                <p className="text-xs font-semibold leading-tight">{qr.bank_label}</p>
-                                {qr.account_name && (
-                                  <p className="text-[10px] text-muted-foreground">{qr.account_name}</p>
-                                )}
-                              </div>
-                              {selectedQr?.id === qr.id && (
-                                <Check className="w-4 h-4 text-primary" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                    {selectedQr && (
-                      <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl p-3">
-                        A full-size QR code will be shown after placing your order. Open your {selectedQr.bank_label} app to scan and complete payment.
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Card section */}
-            {paymentMethod === "card" && (
-              <div className="space-y-4 mt-2">
-                {hasSavedCards && !useNewCard && (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Saved Cards</p>
-                    {savedCards.map((card) => (
-                      <label key={card.id}
-                        className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
-                          savedCardId === card.id ? "border-primary bg-primary/5" : "hover:border-primary/40"
+                  <div className="space-y-3">
+                    {addresses.map((addr) => (
+                      <label key={addr.id}
+                        className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
+                          selectedAddress === addr.id ? "border-primary bg-primary/5" : "hover:border-primary/40"
                         }`}
                       >
-                        <input type="radio" value={card.id}
-                          onChange={() => setValue("saved_card_id", card.id)}
-                          checked={savedCardId === card.id}
-                          className="shrink-0"
-                        />
-                        <CreditCard className="w-5 h-5 text-muted-foreground shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-mono text-sm font-medium">{card.masked_number}</p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {card.card_brand} · {card.card_holder_name} · Exp {card.expiry_month}/{card.expiry_year?.slice(2)}
-                          </p>
+                        <input type="radio" value={addr.id}
+                          {...register("address_id", { valueAsNumber: true })}
+                          className="mt-0.5" />
+                        <div>
+                          <p className="font-medium text-sm">{addr.label} — {addr.recipient_name}</p>
+                          <p className="text-xs text-muted-foreground">{addr.street}, {addr.city}</p>
+                          <p className="text-xs text-muted-foreground">{addr.phone}</p>
                         </div>
-                        {card.is_default && (
-                          <span className="flex items-center gap-1 text-xs text-primary font-medium">
-                            <Star className="w-3 h-3 fill-primary" /> Default
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => deleteCardMutation.mutate(card.id)}
-                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
                       </label>
                     ))}
-                    <button
-                      type="button"
-                      onClick={() => { setUseNewCard(true); setValue("saved_card_id", undefined); }}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed rounded-xl text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
+                    <a href="/account"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 border-2 border-dashed rounded-xl text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
                     >
-                      <Plus className="w-4 h-4" /> Use a different card
-                    </button>
+                      <Plus className="w-4 h-4" /> Add a new address
+                    </a>
                   </div>
                 )}
-
-                {(!hasSavedCards || useNewCard) && (
-                  <div>
-                    {hasSavedCards && (
-                      <button
-                        type="button"
-                        onClick={() => setUseNewCard(false)}
-                        className="text-xs text-primary hover:underline mb-3 block"
-                      >
-                        ← Use a saved card
-                      </button>
-                    )}
-                    <CardInput value={cardData} onChange={setCardData} errors={cardErrors} />
-                  </div>
-                )}
+                {errors.address_id && <p className="text-destructive text-xs mt-2">{errors.address_id.message}</p>}
               </div>
-            )}
-          </div>
 
-          {/* Notes */}
-          <div className="bg-card border rounded-2xl p-6">
-            <h2 className="font-bold mb-3">
-              Order Notes <span className="text-muted-foreground font-normal text-sm">(optional)</span>
-            </h2>
-            <textarea {...register("notes")} rows={3}
-              className="w-full px-3 py-2 text-sm border rounded-xl bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Any special instructions for delivery…"
-            />
-          </div>
-        </div>
-
-        {/* ── Right column — Summary ── */}
-        <div>
-          <div className="bg-card border rounded-2xl p-6 sticky top-24">
-            <h2 className="font-bold mb-4">Order Summary</h2>
-
-            {/* Coupon */}
-            <div className="flex gap-2 mb-5">
-              <div className="flex-1 flex items-center border rounded-xl overflow-hidden">
-                <Tag className="w-4 h-4 text-muted-foreground ml-3 shrink-0" />
-                <input
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  placeholder="COUPON CODE"
-                  className="flex-1 px-2 py-2.5 text-sm bg-transparent focus:outline-none"
+              {/* Notes */}
+              <div className="bg-card border rounded-2xl p-6">
+                <h2 className="font-bold mb-3">
+                  Order Notes <span className="text-muted-foreground font-normal text-sm">(optional)</span>
+                </h2>
+                <textarea {...register("notes")} rows={3}
+                  className="w-full px-3 py-2 text-sm border rounded-xl bg-background resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Any special instructions for delivery…"
                 />
               </div>
-              <button type="button"
-                onClick={() => applyCouponMutation.mutate()}
-                disabled={!couponInput || applyCouponMutation.isPending}
-                className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-              >
-                Apply
-              </button>
             </div>
 
-            {/* Totals */}
-            <div className="space-y-2 text-sm">
-              {[
-                ["Subtotal",  formatCurrency(summary?.subtotal ?? 0)],
-                ["Shipping",  formatCurrency(summary?.shipping_fee ?? 0)],
-                ["Tax (0.5%)", formatCurrency(summary?.tax_amount ?? 0)],
-              ].map(([label, val]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span>{val}</span>
+            {/* Right: Order Summary + CTA */}
+            <div className="space-y-4">
+              <div className="sticky top-24 space-y-4">
+                {OrderSummaryPanel}
+                <button
+                  type="button"
+                  onClick={handleProceedToPayment}
+                  disabled={!addresses?.length}
+                  className="w-full py-3.5 bg-primary text-white font-semibold rounded-xl hover:bg-primary/90 transition disabled:opacity-50"
+                >
+                  Proceed to Payment →
+                </button>
+                {!addresses?.length && (
+                  <p className="text-xs text-center text-muted-foreground">Add a delivery address to continue</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ STEP 2: Payment ══ */}
+        {step === 2 && (
+          <div className="grid lg:grid-cols-2 gap-8">
+            {/* Left: Payment method */}
+            <div className="space-y-6">
+              <div className="bg-card border rounded-2xl p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <button type="button" onClick={() => setStep(1)}
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition">
+                    ← Back
+                  </button>
+                  <h2 className="font-bold flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-primary" /> Payment Method
+                  </h2>
                 </div>
-              ))}
-              {(summary?.discount ?? 0) > 0 && (
-                <div className="flex justify-between text-green-600">
-                  <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Discount</span>
-                  <span>-{formatCurrency(summary!.discount)}</span>
+
+                {/* Method selector */}
+                <div className="space-y-2 mb-5">
+                  {PAYMENT_METHODS.map(({ value, label, desc, Icon, color, ...rest }) => (
+                    <label key={value}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
+                        paymentMethod === value ? "border-primary bg-primary/5" : "hover:border-primary/40"
+                      }`}
+                    >
+                      <input type="radio" value={value} {...register("payment_method")} />
+                      <Icon className={`w-5 h-5 ${color} shrink-0`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{label}</span>
+                          {"badge" in rest && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${color} border-current`}>
+                              {(rest as any).badge}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{desc}</p>
+                      </div>
+                    </label>
+                  ))}
                 </div>
-              )}
-              <div className="flex justify-between font-bold text-base border-t pt-2 mt-2">
-                <span>Total</span>
-                <span className="text-primary">{formatCurrency(summary?.total ?? 0)}</span>
+
+                {/* COD: immediate checkout */}
+                {paymentMethod === "cod" && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
+                    Pay in cash when your order arrives. No upfront payment needed.
+                  </div>
+                )}
+
+                {/* QR: CamCart platform Bakong QR */}
+                {paymentMethod === "qr" && (
+                  <div className="space-y-4">
+                    {qrLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading QR…</p>
+                    ) : !platformAccount ? (
+                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-800">
+                        QR payment is not available right now. Please choose another method.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3">
+                        {platformAccount.khqr_string ? (
+                          <KhqrCard
+                            khqrString={platformAccount.khqr_string}
+                            merchantName={platformAccount.account_holder_name}
+                            bankName="Bakong"
+                            accountNumber={platformAccount.account_number ?? undefined}
+                            currency="usd"
+                            size={220}
+                          />
+                        ) : (
+                          <div className="w-full bg-white border-2 border-dashed border-muted rounded-2xl p-8 flex items-center justify-center">
+                            <QrCode className="w-24 h-24 text-muted-foreground/20" />
+                          </div>
+                        )}
+                        <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl p-3 w-full text-center">
+                          Scan with ABA Pay, ACLEDA, Wing, or any Bakong-supported app and pay to <strong>CamCart</strong>.
+                          The exact amount will be pre-filled when you confirm your order.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Card */}
+                {paymentMethod === "card" && (
+                  <div className="space-y-4">
+                    {hasSavedCards && !useNewCard && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Saved Cards</p>
+                        {savedCards.map((card) => (
+                          <label key={card.id}
+                            className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
+                              savedCardId === card.id ? "border-primary bg-primary/5" : "hover:border-primary/40"
+                            }`}
+                          >
+                            <input type="radio" value={card.id}
+                              onChange={() => setValue("saved_card_id", card.id)}
+                              checked={savedCardId === card.id}
+                              className="shrink-0"
+                            />
+                            <CreditCard className="w-5 h-5 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-mono text-sm font-medium">{card.masked_number}</p>
+                              <p className="text-xs text-muted-foreground capitalize">
+                                {card.card_brand} · {card.card_holder_name} · Exp {card.expiry_month}/{card.expiry_year?.slice(2)}
+                              </p>
+                            </div>
+                            {card.is_default && (
+                              <span className="flex items-center gap-1 text-xs text-primary font-medium">
+                                <Star className="w-3 h-3 fill-primary" /> Default
+                              </span>
+                            )}
+                            <button type="button" onClick={() => deleteCardMutation.mutate(card.id)}
+                              className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </label>
+                        ))}
+                        <button type="button"
+                          onClick={() => { setUseNewCard(true); setValue("saved_card_id", undefined); }}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed rounded-xl text-sm text-muted-foreground hover:border-primary hover:text-primary transition"
+                        >
+                          <Plus className="w-4 h-4" /> Use a different card
+                        </button>
+                      </div>
+                    )}
+                    {(!hasSavedCards || useNewCard) && (
+                      <div>
+                        {hasSavedCards && (
+                          <button type="button" onClick={() => setUseNewCard(false)}
+                            className="text-xs text-primary hover:underline mb-3 block">
+                            ← Use a saved card
+                          </button>
+                        )}
+                        <CardInput value={cardData} onChange={setCardData} errors={cardErrors} />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={
-                placeOrderMutation.isPending ||
-                !addresses?.length ||
-                (paymentMethod === "qr" && (qrLoading || !selectedQr))
-              }
-              className="w-full mt-5 py-3.5 bg-primary text-white font-semibold rounded-xl hover:bg-primary/90 transition disabled:opacity-50"
-            >
-              {placeOrderMutation.isPending
-                ? "Placing Order…"
-                : paymentMethod === "qr" && qrLoading
-                ? "Loading QR options…"
-                : "Place Order"}
-            </button>
-
-            {!addresses?.length && (
-              <p className="text-xs text-center text-muted-foreground mt-2">
-                Add a delivery address to continue
-              </p>
-            )}
+            {/* Right: Summary + Place Order */}
+            <div className="space-y-4">
+              <div className="sticky top-24 space-y-4">
+                {OrderSummaryPanel}
+                <button
+                  type="submit"
+                  disabled={
+                    placeOrderMutation.isPending ||
+                    (paymentMethod === "qr" && (qrLoading || !platformAccount))
+                  }
+                  className="w-full py-3.5 bg-primary text-white font-semibold rounded-xl hover:bg-primary/90 transition disabled:opacity-50"
+                >
+                  {placeOrderMutation.isPending
+                    ? "Placing Order…"
+                    : paymentMethod === "qr" && (qrLoading || !platformAccount)
+                    ? "Loading QR…"
+                    : paymentMethod === "cod"
+                    ? "Place Order"
+                    : paymentMethod === "qr"
+                    ? "I've Transferred — Place Order"
+                    : "Pay & Place Order"}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </form>
 
-      {/* QR Payment Modal */}
+      {/* QR Payment Modal — auto-redirects on success */}
       {showQrModal && successOrderId && selectedQr && (
         <PaymentQRModal
           orderId={successOrderId}
@@ -483,7 +545,7 @@ export default function CheckoutView() {
         />
       )}
 
-      {/* Card Processing Modal */}
+      {/* Card Processing Modal — auto-redirects on success */}
       {showCardModal && successOrderId && (
         <CardProcessingModal
           orderId={successOrderId}
@@ -500,7 +562,7 @@ export default function CheckoutView() {
         />
       )}
 
-      {/* Save Card Modal — shown after card payment if new card was used */}
+      {/* Save Card Modal */}
       {showSaveModal && successOrderId && (
         <SaveCardModal
           cardData={cardData}

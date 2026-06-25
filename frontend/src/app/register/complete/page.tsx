@@ -70,7 +70,7 @@ function CompleteForm() {
           password_confirmation: confirm,
         });
         setAuth(data.user, data.token);
-        toast.success("Account created! Welcome to MarketplaceHub.");
+        toast.success("Account created! Welcome to CamCart.");
       } else {
         // Update existing Google account (name + password + username)
         const { data } = await api.patch("/auth/onboard", {
@@ -81,7 +81,7 @@ function CompleteForm() {
           password_confirmation: confirm,
         });
         updateUser(data.user);
-        toast.success("Welcome to MarketplaceHub!");
+        toast.success("Welcome to CamCart!");
       }
       router.replace("/");
     } catch (err: any) {

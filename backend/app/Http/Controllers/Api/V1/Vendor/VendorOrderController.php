@@ -21,7 +21,7 @@ class VendorOrderController extends Controller
     public function index(Request $request): JsonResponse
     {
         $shop = $this->getShop($request);
-        $orders = Order::with(['customer:id,name,email', 'items', 'payment'])
+        $orders = Order::with(['customer:id,name,email,phone', 'items.product:id,name', 'payment', 'address'])
             ->where('shop_id', $shop->id)
             ->when($request->input('status'), fn ($q, $s) => $q->where('status', $s))
             ->latest()
@@ -96,17 +96,6 @@ class VendorOrderController extends Controller
         $order = Order::where(['id' => $id, 'shop_id' => $shop->id])->firstOrFail();
         $order = $this->orderService->updateStatus($order, 'confirmed');
         return response()->json(['order' => $order, 'message' => 'Order confirmed.']);
-    }
-
-    public function ship(Request $request, int $id): JsonResponse
-    {
-        $request->validate(['tracking_number' => 'nullable|string|max:100']);
-        $shop  = $this->getShop($request);
-        $order = Order::where(['id' => $id, 'shop_id' => $shop->id])->firstOrFail();
-        $order = $this->orderService->updateStatus($order, 'shipped', [
-            'tracking_number' => $request->input('tracking_number'),
-        ]);
-        return response()->json(['order' => $order, 'message' => 'Order marked as shipped.']);
     }
 
     public function deliver(Request $request, int $id): JsonResponse

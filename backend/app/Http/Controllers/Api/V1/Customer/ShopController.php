@@ -11,7 +11,8 @@ class ShopController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $shops = Shop::where('status', 'approved')
+        // Show all shops except banned — customers always see the shop listing
+        $shops = Shop::whereNotIn('status', ['banned', 'pending'])
             ->withCount('products')
             ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->orderByDesc('rating')
@@ -22,7 +23,8 @@ class ShopController extends Controller
 
     public function show(string $slug): JsonResponse
     {
-        $shop = Shop::where('slug', $slug)->where('status', 'approved')
+        $shop = Shop::where('slug', $slug)
+            ->whereNotIn('status', ['banned', 'pending'])
             ->withCount('products')
             ->firstOrFail();
 
@@ -31,10 +33,14 @@ class ShopController extends Controller
 
     public function products(string $slug, Request $request): JsonResponse
     {
-        $shop = Shop::where('slug', $slug)->where('status', 'approved')->firstOrFail();
+        // Only show products when shop is approved AND vendor has opened it
+        $shop = Shop::where('slug', $slug)
+            ->where('status', 'approved')
+            ->where('is_open', true)
+            ->firstOrFail();
 
         $products = $shop->products()
-            ->where('status', 'published')
+            ->where('status', 'active')
             ->with(['images', 'category'])
             ->when($request->category, fn($q, $c) => $q->whereHas('category', fn($q2) => $q2->where('slug', $c)))
             ->when($request->search,   fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
@@ -44,18 +50,43 @@ class ShopController extends Controller
         return response()->json($products);
     }
 
-    /** Return active QR payment codes for this shop so customers can pick which bank to pay with. */
+    /**
+     * Return payment options for this shop.
+     * Prefers auto-generated KHQR bank accounts; falls back to manually-uploaded QR images.
+     */
     public function paymentQrCodes(string $slug): JsonResponse
     {
         $shop = Shop::where('slug', $slug)->where('status', 'approved')->firstOrFail();
 
-        $qrCodes = $shop->paymentQrCodes()
+        // Auto-generated KHQR from connected bank accounts (shown first)
+        $bankEntries = $shop->bankAccounts()
+            ->orderByDesc('is_primary')
+            ->get()
+            ->map(fn($acc) => [
+                'id'              => 'bank_' . $acc->id,
+                'bank_account_id' => $acc->id,
+                'bank_name'       => $acc->bank_name,
+                'bank_label'      => $acc->bank_name,
+                'currency'        => 'usd',
+                'qr_image_url'    => $acc->qrImageUrl(),
+                'khqr_string'     => $acc->khqr_string,
+                'account_name'    => $acc->account_holder_name,
+                'account_number'  => $acc->account_number,
+                'phone_number'    => $acc->phone_number,
+                'is_khqr'         => !empty($acc->phone_number),
+            ]);
+
+        // Legacy manually-uploaded QR codes
+        $uploadedQrs = $shop->paymentQrCodes()
             ->where('is_active', true)
             ->orderBy('currency')
             ->orderBy('bank_label')
             ->get()
-            ->map(fn($q) => $q->toPublicArray());
+            ->map(fn($q) => array_merge($q->toPublicArray(), ['is_khqr' => false, 'khqr_string' => null, 'phone_number' => null, 'bank_account_id' => null]));
 
-        return response()->json(['data' => $qrCodes]);
+        // Prefer KHQR accounts; include legacy only if no KHQR accounts exist
+        $data = $bankEntries->isNotEmpty() ? $bankEntries : $uploadedQrs;
+
+        return response()->json(['data' => $data->values()]);
     }
 }

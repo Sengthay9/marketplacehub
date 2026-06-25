@@ -1,5 +1,5 @@
 {
-    "name": "marketplacehub/backend",
+    "name": "kh-market-hub/backend",
     "description": "MarketplaceHub Multi-Vendor E-Commerce API",
     "keywords": ["laravel", "marketplace", "ecommerce"],
     "license": "MIT",

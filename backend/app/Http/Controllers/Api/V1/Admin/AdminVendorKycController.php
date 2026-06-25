@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\VendorKyc;
 use App\Models\User;
 use App\Notifications\VendorApprovedNotification;
+use App\Notifications\VendorRejectedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class AdminVendorKycController extends Controller
@@ -37,13 +37,20 @@ class AdminVendorKycController extends Controller
             return response()->json(['message' => 'KYC is not in pending status.'], 400);
         }
 
-        // Generate a secure temporary password
-        $plainPassword = Str::random(10) . '!A1';
+        // Generate username from vendor's first name
+        $firstName = explode(' ', trim($kyc->full_name))[0];
+        $username  = User::generateUsername($firstName);
+
+        // Generate secure temp password
+        $plainPassword = Str::random(8) . '!A1';
 
         $kyc->user->update([
-            'password'       => $plainPassword,
-            'email_verified' => true,
-            'email_verified_at' => now(),
+            'username'              => $username,
+            'password'              => $plainPassword,
+            'vendor_status'         => 'approved',
+            'email_verified'        => true,
+            'email_verified_at'     => now(),
+            'force_password_change' => true,
         ]);
 
         $kyc->update([
@@ -53,12 +60,12 @@ class AdminVendorKycController extends Controller
         ]);
 
         try {
-            $kyc->user->notify(new VendorApprovedNotification($plainPassword));
+            $kyc->user->notify(new VendorApprovedNotification($username, $plainPassword));
         } catch (\Throwable $e) {
             \Log::warning('VendorApprovedNotification failed: ' . $e->getMessage());
         }
 
-        return response()->json(['message' => 'Vendor KYC approved. Credentials sent by email.']);
+        return response()->json(['message' => 'Vendor approved. Credentials sent by email.']);
     }
 
     public function reject(Request $request, int $id): JsonResponse
@@ -78,6 +85,12 @@ class AdminVendorKycController extends Controller
             'reviewed_at'      => now(),
         ]);
 
-        return response()->json(['message' => 'Vendor KYC rejected.']);
+        try {
+            $kyc->user->notify(new VendorRejectedNotification($request->reason));
+        } catch (\Throwable $e) {
+            \Log::warning('VendorRejectedNotification failed: ' . $e->getMessage());
+        }
+
+        return response()->json(['message' => 'Vendor application rejected. Email sent to applicant.']);
     }
 }

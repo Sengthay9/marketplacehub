@@ -26,7 +26,7 @@ export default function ContactForm() {
 
       <div className="flex flex-col sm:flex-row gap-4 mb-10">
         {[
-          { icon: Mail, label: "Email", value: "support@marketplacehub.com" },
+          { icon: Mail, label: "Email", value: "support@camcart.com" },
           { icon: MessageSquare, label: "Live Chat", value: "Available 9 AM – 6 PM" },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} className="flex-1 bg-card border rounded-2xl p-5 flex items-center gap-4">

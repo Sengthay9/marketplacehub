@@ -149,58 +149,59 @@ export default function ShopDetailView({ slug }: { slug: string }) {
       </Link>
 
       {/* Shop Header */}
-      <div className="bg-card border rounded-2xl overflow-hidden mb-8">
+      <div className="bg-card border rounded-2xl mb-8">
         {/* Banner */}
-        <div className="h-40 md:h-56 bg-gradient-to-r from-primary/20 via-blue-500/10 to-indigo-500/20 relative">
+        <div className="h-64 md:h-80 bg-gradient-to-r from-primary/20 via-blue-500/10 to-indigo-500/20 relative overflow-hidden rounded-t-2xl">
           {shop.banner && (
-            <Image src={shop.banner} alt="" fill className="object-cover" unoptimized />
+            <Image src={shop.banner} alt="" fill className="object-cover object-center" unoptimized />
           )}
         </div>
 
         <div className="px-6 pb-6">
           {/* Logo + info row */}
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-10 mb-4">
-            <div className="w-20 h-20 rounded-2xl border-4 border-background bg-card overflow-hidden shrink-0 shadow-lg">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-end gap-4 -mt-10 mb-4">
+            <div className="w-28 h-28 rounded-2xl border-4 border-background bg-card overflow-hidden shrink-0 shadow-lg">
               {shop.logo
-                ? <Image src={shop.logo} alt={shop.name} width={80} height={80} className="object-cover" unoptimized />
+                ? <Image src={shop.logo} alt={shop.name} width={112} height={112} className="object-cover w-full h-full" unoptimized />
                 : <div className="w-full h-full bg-primary/10 flex items-center justify-center">
-                    <Store className="w-8 h-8 text-primary/50" />
+                    <Store className="w-10 h-10 text-primary/50" />
                   </div>
               }
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-black">{shop.name}</h1>
-                {/* Favorite button */}
-                {isAuthenticated && user?.role === "customer" && (
-                  <button
-                    onClick={() => toggleFavorite.mutate()}
-                    disabled={toggleFavorite.isPending}
-                    title={isFavorited ? "Remove from favorites" : "Add to favorites"}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition ${
-                      isFavorited
-                        ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
-                        : "border-border text-muted-foreground hover:border-rose-300 hover:text-rose-500"
-                    }`}
-                  >
-                    <Heart className={`w-4 h-4 ${isFavorited ? "fill-rose-500 text-rose-500" : ""}`} />
-                    {isFavorited ? "Favorited" : "Add to Favorites"}
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-3 mt-1 flex-wrap">
-                <div className="flex items-center gap-1">
-                  <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="text-sm font-semibold">{Number(shop.rating ?? 0).toFixed(1)}</span>
-                  <span className="text-sm text-muted-foreground">({shop.review_count} reviews)</span>
+            <div className="flex-1 pt-10 sm:pt-0 min-w-0">
+              <h1 className="text-xl md:text-2xl font-black">{shop.name}</h1>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {/* 5-star display */}
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((s) => {
+                    const rating = Number(shop.rating ?? 0);
+                    return (
+                      <Star
+                        key={s}
+                        className={`w-4 h-4 ${s <= Math.round(rating) ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`}
+                      />
+                    );
+                  })}
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  shop.status === "approved" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                }`}>
-                  {shop.status === "approved" ? "Verified Shop" : shop.status}
-                </span>
+                <span className="text-sm font-semibold">{Number(shop.rating ?? 0).toFixed(1)}</span>
+                <span className="text-sm text-muted-foreground">({shop.review_count} reviews)</span>
               </div>
             </div>
+            {/* Favorite button — right side, vertically centered */}
+            {isAuthenticated && user?.role === "customer" && (
+              <button
+                onClick={() => toggleFavorite.mutate()}
+                disabled={toggleFavorite.isPending}
+                className={`shrink-0 self-center flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border transition ${
+                  isFavorited
+                    ? "bg-rose-500 border-rose-500 text-white hover:bg-rose-600"
+                    : "bg-card border-border text-muted-foreground hover:text-rose-500 hover:border-rose-400"
+                }`}
+              >
+                <Heart className={`w-4 h-4 ${isFavorited ? "fill-white" : ""}`} />
+                {isFavorited ? "Favorited" : "Favorite"}
+              </button>
+            )}
           </div>
 
           {shop.description && (
@@ -221,31 +222,48 @@ export default function ShopDetailView({ slug }: { slug: string }) {
         </div>
       </div>
 
-      {/* Products */}
-      <div className="mb-12">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Package className="w-5 h-5 text-primary" /> Products from this shop
-        </h2>
+      {/* Shop closed banner */}
+      {(!shop.is_open || shop.status !== "approved") && (
+        <div className="mb-8 flex flex-col items-center justify-center py-12 bg-muted/50 border rounded-2xl text-center gap-3">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+            <Store className="w-8 h-8 text-muted-foreground/50" />
+          </div>
+          <h3 className="text-lg font-bold">This shop is currently closed</h3>
+          <p className="text-sm text-muted-foreground max-w-xs">
+            {shop.open_time && shop.close_time
+              ? `Opens ${shop.open_time} – ${shop.close_time}`
+              : "Check back later when the shop is open."}
+          </p>
+        </div>
+      )}
 
-        {productsLoading ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-muted rounded-2xl aspect-square animate-pulse" />
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>No products available yet.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Products — only when shop is open */}
+      {shop.is_open && shop.status === "approved" && (
+        <div className="mb-12">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Package className="w-5 h-5 text-primary" /> Products from this shop
+          </h2>
+
+          {productsLoading ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="bg-muted rounded-2xl aspect-square animate-pulse" />
+              ))}
+            </div>
+          ) : products.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <Package className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>No products available yet.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Reviews */}
       <div>

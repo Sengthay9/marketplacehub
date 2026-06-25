@@ -91,13 +91,13 @@ export default function ShopsListing() {
               <Link
                 key={shop.id}
                 href={`/shops/${shop.slug}`}
-                className="group bg-card border rounded-2xl overflow-hidden hover:shadow-lg transition-shadow"
+                className="group bg-card border rounded-2xl hover:shadow-lg transition-shadow"
               >
-                <div className="h-24 bg-gradient-to-r from-primary/20 to-blue-500/20 relative">
+                <div className="h-24 bg-gradient-to-r from-primary/20 to-blue-500/20 relative overflow-hidden rounded-t-2xl">
                   {shop.banner && <ShopBanner src={shop.banner} />}
                 </div>
                 <div className="p-4 -mt-6">
-                  <div className="w-12 h-12 bg-card border-2 border-background rounded-xl overflow-hidden mb-2">
+                  <div className="relative z-10 w-12 h-12 bg-card border-2 border-background rounded-xl overflow-hidden mb-2">
                     {shop.logo
                       ? <ShopLogo src={shop.logo} alt={shop.name} size={48} />
                       : <div className="w-full h-full bg-primary/10 flex items-center justify-center">

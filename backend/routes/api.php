@@ -38,12 +38,17 @@ use App\Http\Controllers\Api\V1\Customer\SavedCardController;
 use App\Http\Controllers\Api\V1\Customer\PaymentController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\Auth\VendorKycController;
+use App\Http\Controllers\Api\V1\Vendor\VendorBankAccountController;
 use App\Http\Controllers\Api\V1\Vendor\VendorPaymentQrController;
 use App\Http\Controllers\Api\V1\Admin\AdminVendorKycController;
 use App\Http\Controllers\Api\V1\Admin\AdminCommissionController;
+use App\Http\Controllers\Api\V1\Admin\AdminPayoutController;
+use App\Http\Controllers\Api\V1\Admin\AdminBankAccountController;
+use App\Http\Controllers\Api\V1\Vendor\VendorPayoutController;
 use App\Http\Controllers\Api\V1\ProfileController as SharedProfileController;
 use App\Http\Controllers\Api\V1\Customer\ShopReviewController;
 use App\Http\Controllers\Api\V1\Customer\ShopFavoriteController;
+use App\Http\Controllers\Api\V1\Admin\AdminSiteSettingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -51,6 +56,7 @@ use App\Http\Controllers\Api\V1\Customer\ShopFavoriteController;
 |--------------------------------------------------------------------------
 */
 Route::get('v1/health', fn () => response()->json(['status' => 'ok', 'timestamp' => now()]));
+Route::get('v1/site-settings', [AdminSiteSettingController::class, 'show']);
 
 Route::prefix('v1')->group(function () {
 
@@ -77,6 +83,10 @@ Route::prefix('v1')->group(function () {
         Route::post('vendor/register', [VendorKycController::class, 'register'])->middleware('throttle:5,1');
     });
 
+    // Public — platform Bakong account (shown to customers at checkout)
+    Route::get('platform/bank-account',             [AdminBankAccountController::class, 'public']);
+    Route::get('platform/bank-account/dynamic-qr',  [AdminBankAccountController::class, 'dynamicQr']);
+
     // Public catalog
     Route::get('products',            [ProductController::class, 'index']);
     Route::get('products/{slug}',     [ProductController::class, 'show']);
@@ -98,10 +108,11 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
 
         // Auth
-        Route::post('auth/logout',   [AuthController::class, 'logout']);
-        Route::get('auth/me',        [AuthController::class, 'me']);
-        Route::post('auth/refresh',  [AuthController::class, 'refresh']);
-        Route::patch('auth/onboard', [SocialAuthController::class, 'onboard']);
+        Route::post('auth/logout',        [AuthController::class, 'logout']);
+        Route::get('auth/me',             [AuthController::class, 'me']);
+        Route::post('auth/refresh',       [AuthController::class, 'refresh']);
+        Route::post('auth/set-password',  [AuthController::class, 'setPassword']);
+        Route::patch('auth/onboard',      [SocialAuthController::class, 'onboard']);
 
         // Shared profile update (works for any role)
         Route::put('me/profile', [SharedProfileController::class, 'update']);
@@ -164,14 +175,11 @@ Route::prefix('v1')->group(function () {
             Route::get('shop-favorites',              [ShopFavoriteController::class, 'index']);
             Route::post('shops/{slug}/favorite',      [ShopFavoriteController::class, 'toggle']);
 
-            // Notifications
-            Route::get('notifications',              [NotificationController::class, 'index']);
-            Route::post('notifications/{id}/read',   [NotificationController::class, 'markRead']);
-            Route::post('notifications/read-all',    [NotificationController::class, 'markAllRead']);
 
             // Payments
-            Route::get('payments/{orderId}/status',   [PaymentController::class, 'status']);
-            Route::post('payments/{orderId}/confirm',  [PaymentController::class, 'confirm']);
+            Route::get('payments/{orderId}/status',        [PaymentController::class, 'status']);
+            Route::post('payments/{orderId}/confirm',       [PaymentController::class, 'confirm']);
+            Route::post('payments/{orderId}/check-bakong',  [PaymentController::class, 'checkBakong']);
 
             // Saved Cards (encrypted at rest, CVV never stored)
             Route::get('cards',                [SavedCardController::class, 'index']);
@@ -180,6 +188,11 @@ Route::prefix('v1')->group(function () {
             Route::post('cards/{id}/default',  [SavedCardController::class, 'setDefault']);
 
         });
+        // Notifications — accessible by any authenticated user (customer, vendor, admin)
+        Route::get('notifications',             [NotificationController::class, 'index']);
+        Route::post('notifications/read-all',   [NotificationController::class, 'markAllRead']);
+        Route::post('notifications/{id}/read',  [NotificationController::class, 'markRead']);
+
         // Reports — accessible by any authenticated user (customer OR vendor)
         Route::post('reports',      [ReportController::class, 'store']);
         Route::get('reports/mine',  [ReportController::class, 'myReports']);
@@ -192,7 +205,7 @@ Route::prefix('v1')->group(function () {
             Route::get('shop',           [VendorShopController::class, 'show']);
             Route::post('shop',          [VendorShopController::class, 'create']);
             Route::put('shop',           [VendorShopController::class, 'update']);
-            Route::post('shop/toggle',   [VendorShopController::class, 'toggleStatus']);
+            Route::post('shop/toggle',   [VendorShopController::class, 'toggleOpen']);
             Route::post('shop/logo',     [VendorShopController::class, 'uploadLogo']);
             Route::post('shop/banner',   [VendorShopController::class, 'uploadBanner']);
 
@@ -215,7 +228,6 @@ Route::prefix('v1')->group(function () {
             Route::get('orders',                    [VendorOrderController::class, 'index']);
             Route::get('orders/{id}',               [VendorOrderController::class, 'show']);
             Route::post('orders/{id}/confirm',         [VendorOrderController::class, 'confirm']);
-            Route::post('orders/{id}/ship',            [VendorOrderController::class, 'ship']);
             Route::post('orders/{id}/deliver',         [VendorOrderController::class, 'deliver']);
             Route::post('orders/{id}/confirm-payment', [VendorOrderController::class, 'confirmPayment']);
             Route::post('orders/{id}/reject-payment',  [VendorOrderController::class, 'rejectPayment']);
@@ -228,15 +240,31 @@ Route::prefix('v1')->group(function () {
             // Coupons
             Route::apiResource('coupons', VendorCouponController::class);
 
-            // Reviews
+            // Product reviews
             Route::get('reviews',                        [VendorReviewController::class, 'index']);
             Route::post('reviews/{id}/reply',            [VendorReviewController::class, 'reply']);
+            Route::delete('reviews/{id}',                [VendorReviewController::class, 'destroy']);
+            // Shop reviews
+            Route::get('shop-reviews',                   [VendorReviewController::class, 'shopIndex']);
+            Route::post('shop-reviews/{id}/reply',       [VendorReviewController::class, 'shopReply']);
+            Route::delete('shop-reviews/{id}',           [VendorReviewController::class, 'shopDestroy']);
 
             // Payment QR codes (vendor manages their bank QR images)
             Route::get('payment-qr',              [VendorPaymentQrController::class, 'index']);
             Route::post('payment-qr',             [VendorPaymentQrController::class, 'store']);
             Route::delete('payment-qr/{id}',      [VendorPaymentQrController::class, 'destroy']);
             Route::post('payment-qr/{id}/toggle', [VendorPaymentQrController::class, 'toggle']);
+
+            // Bank accounts (for receiving payouts + auto-generated KHQR)
+            Route::get('bank-accounts',                  [VendorBankAccountController::class, 'index']);
+            Route::post('bank-accounts',                 [VendorBankAccountController::class, 'store']);
+            Route::put('bank-accounts/{id}',             [VendorBankAccountController::class, 'update']);
+            Route::delete('bank-accounts/{id}',          [VendorBankAccountController::class, 'destroy']);
+            Route::post('bank-accounts/{id}/primary',    [VendorBankAccountController::class, 'setPrimary']);
+            Route::get('bank-accounts/{id}/dynamic-qr',  [VendorBankAccountController::class, 'dynamicQr']);
+
+            // Payouts
+            Route::get('payouts', [VendorPayoutController::class, 'index']);
         });
 
         /*
@@ -267,11 +295,12 @@ Route::prefix('v1')->group(function () {
             Route::post('vendors/{id}/suspend',      [AdminUserController::class, 'suspendVendor']);
             Route::post('vendors/{id}/ban',          [AdminUserController::class, 'banVendor']);
             Route::post('vendors/{id}/unban',        [AdminUserController::class, 'unbanVendor']);
+            Route::get('vendors/{id}/shop',          [AdminUserController::class, 'getVendorShop']);
+            Route::post('vendors/{id}/shop/logo',    [AdminUserController::class, 'uploadVendorShopLogo']);
+            Route::post('vendors/{id}/shop/banner',  [AdminUserController::class, 'uploadVendorShopBanner']);
 
             // Shops
             Route::apiResource('shops', AdminShopController::class)->except(['store']);
-            Route::post('shops/{id}/approve',  [AdminShopController::class, 'approve']);
-            Route::post('shops/{id}/reject',   [AdminShopController::class, 'reject']);
             Route::post('shops/{id}/warn',     [AdminShopController::class, 'warn']);
             Route::post('shops/{id}/suspend',  [AdminShopController::class, 'suspend']);
             Route::post('shops/{id}/ban',      [AdminShopController::class, 'ban']);
@@ -293,7 +322,9 @@ Route::prefix('v1')->group(function () {
             Route::apiResource('coupons', AdminCouponController::class);
 
             // Analytics
-            Route::get('analytics', [AdminAnalyticsController::class, 'index']);
+            Route::get('analytics',        [AdminAnalyticsController::class, 'index']);
+            Route::get('analytics/chart',  [AdminAnalyticsController::class, 'chart']);
+            Route::get('analytics/badges', [AdminAnalyticsController::class, 'badges']);
 
             // Commissions
             Route::get('commissions',                      [AdminCommissionController::class, 'index']);
@@ -307,6 +338,22 @@ Route::prefix('v1')->group(function () {
             Route::post('commissions/{id}/send-invoice',   [AdminCommissionController::class, 'sendInvoice']);
             Route::get('commissions/{id}/invoice-preview', [AdminCommissionController::class, 'previewInvoice']);
 
+
+            // Site settings
+            Route::get('site-settings',              [AdminSiteSettingController::class, 'show']);
+            Route::post('site-settings',             [AdminSiteSettingController::class, 'update']);
+            Route::delete('site-settings/logo',      [AdminSiteSettingController::class, 'removeLogo']);
+
+            // Platform Bakong account
+            Route::get('bank-account',               [AdminBankAccountController::class, 'show']);
+            Route::post('bank-account',              [AdminBankAccountController::class, 'save']);
+            Route::delete('bank-account',            [AdminBankAccountController::class, 'destroy']);
+
+            // Payouts
+            Route::get('payouts',                    [AdminPayoutController::class, 'index']);
+            Route::get('payouts/summary',            [AdminPayoutController::class, 'summary']);
+            Route::post('payouts/{id}/complete',     [AdminPayoutController::class, 'complete']);
+            Route::post('payouts/bulk-complete',     [AdminPayoutController::class, 'bulkComplete']);
 
             // Vendor KYC Review
             Route::get('vendor-kyc',            [AdminVendorKycController::class, 'index']);

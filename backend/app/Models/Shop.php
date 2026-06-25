@@ -18,7 +18,7 @@ class Shop extends Model
     protected $fillable = [
         'user_id', 'name', 'slug', 'logo', 'banner', 'description',
         'contact_number', 'email', 'address', 'rating', 'review_count',
-        'status', 'rejection_reason', 'open_time', 'close_time',
+        'status', 'rejection_reason', 'open_time', 'close_time', 'is_open',
     ];
 
     protected function casts(): array
@@ -26,6 +26,7 @@ class Shop extends Model
         return [
             'rating'       => 'decimal:2',
             'review_count' => 'integer',
+            'is_open'      => 'boolean',
         ];
     }
 
@@ -43,6 +44,7 @@ class Shop extends Model
     public function orders(): HasMany           { return $this->hasMany(Order::class); }
     public function coupons(): HasMany          { return $this->hasMany(Coupon::class); }
     public function paymentQrCodes(): HasMany   { return $this->hasMany(VendorPaymentQrCode::class); }
+    public function bankAccounts(): HasMany     { return $this->hasMany(VendorBankAccount::class); }
     public function shopReviews(): HasMany      { return $this->hasMany(ShopReview::class); }
 
     public function recalculateRating(): void

@@ -13,7 +13,7 @@ export default function VendorApplicationSubmittedPage() {
         </div>
         <h1 className="text-2xl font-bold mb-2">Application Submitted!</h1>
         <p className="text-muted-foreground mb-8">
-          Thank you for applying to become a vendor on MarketplaceHub. Our team will review your documents and identity verification.
+          Thank you for applying to become a vendor on CamCart. Our team will review your documents and identity verification.
         </p>
 
         <div className="bg-card border rounded-2xl p-6 space-y-4 text-left mb-8">
