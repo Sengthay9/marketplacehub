@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.googleusercontent.com" },
       { protocol: "https", hostname: "lh3.googleusercontent.com" },
       { protocol: "http",  hostname: "localhost" },
+      { protocol: "https", hostname: "**.up.railway.app" },
+      { protocol: "https", hostname: "**.railway.app" },
     ],
   },
   async rewrites() {
