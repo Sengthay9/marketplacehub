@@ -71,7 +71,7 @@ docker exec mh_backend php artisan migrate --seed
 
 | Role     | Username         | Password      |
 |----------|------------------|---------------|
-| Admin    | admin            | Admin@2024    |
+| Admin    | admin@camcart    | Admin@2024    |
 | Vendor   | vendor@camcart   | vendor@2024   |
 | Customer | customer@camcart | customer@2024 |
 
