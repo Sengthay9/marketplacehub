@@ -1,6 +1,6 @@
 # CamCart — MarketplaceHub
 
-> Multi-Vendor E-Commerce Marketplace for Cambodia
+> Cambodia's Multi-Vendor E-Commerce Marketplace — built with Next.js 15 + Laravel 12
 
 ---
 
@@ -8,15 +8,16 @@
 
 | Layer       | Technology |
 |-------------|-----------|
-| Frontend    | Next.js 15 (App Router), TypeScript, Tailwind CSS |
+| Frontend    | Next.js 15 (App Router), TypeScript, Tailwind CSS, Radix UI |
 | State       | Zustand, TanStack Query (React Query) |
-| Forms       | React Hook Form |
+| Forms       | React Hook Form + Zod validation |
 | Backend     | Laravel 12, PHP 8.4+ |
-| Auth        | Laravel Sanctum (Bearer Token) |
+| Auth        | Laravel Sanctum (Bearer Token), Google OAuth, Firebase Phone Auth, 2FA |
 | Database    | PostgreSQL 16 |
 | Cache       | Redis 7 |
-| Storage     | Local disk (nginx serves `/storage/`) |
 | Queue       | Redis + Laravel Queue Workers |
+| Real-time   | Pusher + Laravel Echo (WebSocket) |
+| Storage     | Local disk (nginx serves `/storage/`) |
 | Deploy      | Docker + Docker Compose + Nginx |
 
 ---
@@ -25,8 +26,8 @@
 
 | Role     | Description |
 |----------|-------------|
-| Admin    | Full platform control — users, vendors, KYC, products, categories, coupons, payouts, analytics, site settings |
-| Vendor   | Shop owner — manage shop, products, inventory, orders & payouts, coupons, reviews, notifications, support |
+| Admin    | Full platform control — users, vendors, KYC, products, categories, coupons, payouts, commissions, analytics, site settings, reports |
+| Vendor   | Shop owner — manage shop, products, inventory, orders & payouts, coupons, reviews, notifications, support, payment QR |
 | Customer | Buyer — browse, cart, wishlist, checkout, order tracking, shop favorites, reviews, support |
 
 ---
@@ -37,68 +38,79 @@
 - Docker 24+
 - Docker Compose v2
 
-### 1. Start all services
+### 1. Clone & configure environment
 
 ```bash
-cd ~/Desktop/Marketplacehub
+git clone https://github.com/Sengthay9/marketplacehub.git
+cd marketplacehub
+cp .env.example .env
+cp frontend/.env.local.example frontend/.env.local
+cp backend/.env.example backend/.env
+```
+
+### 2. Start all services
+
+```bash
 docker-compose up -d
 ```
 
-### 2. Run migrations & seed
+### 3. Run migrations & seed
 
 ```bash
 docker exec mh_backend php artisan migrate --seed
 ```
 
-### 3. Access
+### 4. Access
 
-| Service  | URL |
-|----------|-----|
-| Frontend | http://localhost |
-| API      | http://localhost/api/v1 |
+| Service   | URL |
+|-----------|-----|
+| Frontend  | http://localhost |
+| API       | http://localhost/api/v1 |
 
 ### Demo Accounts
 
-| Role     | Username / Email         | Password     |
-|----------|--------------------------|--------------|
-| Admin    | admin@marketplacehub.com | Admin@2024   |
-| Vendor   | vendor@camcart           | vendor@2024  |
+| Role     | Username / Email         | Password      |
+|----------|--------------------------|---------------|
+| Admin    | admin@marketplacehub.com | Admin@2024    |
+| Vendor   | vendor@camcart           | vendor@2024   |
 | Customer | customer@camcart         | customer@2024 |
 
-> Login uses **username** for vendors/customers and **email** for admin.
+> Login accepts **username** (vendors/customers) or **email** (all roles).
 
 ---
 
 ## Deployment
 
-**Frontend changes** require a full rebuild:
+**Frontend changes** require a full image rebuild:
 
 ```bash
-docker-compose build frontend && docker-compose up -d frontend
+docker-compose build frontend && docker-compose up -d --no-deps frontend
 ```
 
 **Backend (PHP) changes** apply instantly via docker cp:
 
 ```bash
-docker cp backend/app/path/File.php mh_backend:/var/www/html/app/path/File.php
+docker cp backend/app/Http/Controllers/Api/V1/Vendor/VendorShopController.php \
+  mh_backend:/var/www/html/app/Http/Controllers/Api/V1/Vendor/VendorShopController.php
 ```
 
-**Run migrations:**
+**Run new migrations:**
 
 ```bash
 docker exec mh_backend php artisan migrate
 ```
 
-**View backend logs:**
+**Useful commands:**
 
 ```bash
-docker exec mh_backend tail -100 /var/www/html/storage/logs/laravel.log
-```
+# View backend logs
+docker exec mh_backend tail -200 /var/www/html/storage/logs/laravel.log
 
-**Check containers:**
+# Restart queue workers
+docker-compose restart queue
 
-```bash
-docker ps --format "table {{.Names}}\t{{.Status}}"
+# Check all containers
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
 ---
@@ -106,96 +118,99 @@ docker ps --format "table {{.Names}}\t{{.Status}}"
 ## Features
 
 ### Customer
-- **Homepage**: Hero section, featured products, featured shops, mega category menu
-- **Browse & Search**: Product listing with category, price, sort, search filters
-- **Product Detail**: Images, variants, star rating, reviews, share button, add to cart
-- **Cart**: Multi-vendor cart grouping, quantity update, remove
-- **Wishlist**: Save products (heart icon), view at `/wishlist` (Products + Shops tabs)
-- **Shop Favorites**: Favorite button on shop page, shop tab in wishlist
+
+- **Homepage**: Hero banner, featured products grid, featured shops carousel, mega category menu
+- **Browse & Search**: Product listing with category, price range, sort, keyword search filters
+- **Product Detail**: Image gallery, variants (size/color/etc.), star rating, YouTube-style reviews (`@username`, relative time, inline stars), share button, add to cart
+- **Cart**: Multi-vendor cart grouped by shop, quantity update, item remove
+- **Wishlist**: Heart icon on any product or shop, view at `/wishlist` (Products tab + Shops tab)
+- **Shop Favorites**: Favorite button on shop banner (top-right), listed under Shops tab in wishlist
 - **Checkout**:
-  - Delivery address: pick saved address or add new with map picker
-  - Payment methods: COD / QR Bank Transfer (Bakong, ABA, ACLEDA)
-  - Coupon code discount
-  - Order summary: subtotal, discount, total
-- **QR Payment**: Shows vendor QR image after order, 15-min timer, "I've paid" confirm
-- **Order Tracking**: Order status + payment status in `/account`
-- **Reviews**: Star rating + comment on products and shops
-- **Support**: Contact admin for help via `/support`
-- **Account** (`/account`): Profile, Orders, Addresses, Payment methods
+  - Delivery address — pick saved address or add new with interactive map picker
+  - Payment methods — COD or QR Bank Transfer (Bakong / ABA / ACLEDA)
+  - Coupon code for discount (% off, fixed amount, free shipping)
+  - Order summary: subtotal, discount, delivery fee, total
+- **QR Payment**: After placing order, shows vendor QR image with 15-minute countdown timer and "I've paid" confirmation
+- **Order Tracking**: Status timeline (pending → confirmed → processing → delivered) + payment status in `/account`
+- **Reviews**: Star rating + comment on products and shops; shop reviews shown in YouTube-style comment format
+- **Support**: Submit support tickets to admin via `/support`
+- **Account** (`/account`): Profile edit, order history, saved addresses, saved payment cards
+- **Notifications**: Real-time in-app notifications via WebSocket
 
 ### Vendor
-- **Dashboard**: Revenue, orders, top products analytics
+
+- **Dashboard** (`/vendor/dashboard`): Revenue summary, order count, top-selling products chart
+- **Analytics** (`/vendor/analytics`): Revenue over time, order volume, best products by sales
 - **Orders & Payouts** (`/vendor/payouts`):
-  - All / Pending / Confirmed / Cancelled order tabs
-  - Click any order to expand with full detail + delivery map
-  - **Await tab**: Payout bills pending admin transfer (shows order #, fee %)
-  - **Receive tab**: Completed payouts (shows amount received, Bakong receipt detail)
-  - Bakong receipt: Order total, fee charged, amount received, reference #, transfer date
-- **My Shop**: Edit shop info, logo, banner, open/close toggle
-- **Products**: CRUD with images, variants, stock, pricing, discount
-- **Inventory**: Simple product catalog — one image per product, name, category, description
-- **Coupons**: Create discount codes (%, fixed, free shipping), usage limits
-- **Reviews**:
-  - **Shop Reviews tab**: See and reply to customer shop reviews
-  - **Product Reviews tab**: See and reply to product reviews, delete
-  - Sub-filters: All / Newest / Replied
-- **Notifications**: Typed notifications including payout completed alerts
-- **Contact Admin** (`/vendor/support`): Submit support tickets to admin
-- **Settings**:
-  - Read-only profile (name, username, phone, email)
-  - Appearance: Light / Dark / System theme + language (English / Khmer)
-  - Payment: link to payment QR setup
-  - Change Password + Forgot Password
-- **Payment QR** (`/vendor/payment`): Upload Bakong/ABA/ACLEDA QR images per currency
+  - Tabs: All / Pending / Confirmed / Cancelled / **Await** / **Receive**
+  - Expand any order for full detail + delivery address map
+  - **Await tab**: Payout bills pending admin bank transfer (shows order #, gross amount, fee %, net amount)
+  - **Receive tab**: Completed payouts with full Bakong receipt (order total, fee, amount received, reference #, transfer date)
+- **My Shop** (`/vendor/shop`): Edit shop name, description, contact, address, hours; upload logo & banner; open/close toggle
+- **Products** (`/vendor/products`): Full CRUD — multiple images, product variants (attributes, SKU, price, stock), pricing, discount, category, status
+- **Inventory** (`/vendor/inventory`): Lightweight catalog — one image, name, category, description per product
+- **Coupons** (`/vendor/coupons`): Create discount codes (percentage, fixed, free shipping) with usage limits and expiry
+- **Reviews** (`/vendor/reviews`):
+  - **Shop Reviews tab**: View, reply to, and delete customer shop reviews
+  - **Product Reviews tab**: View, reply to, and delete product reviews
+  - Sub-filter: All / Newest / Replied
+- **Notifications** (`/vendor/notifications`): Typed real-time notifications including payout completed, new order, product approved/rejected
+- **Support** (`/vendor/support`): Submit tickets to admin
+- **Settings** (`/vendor/settings`): Read-only profile info, Light/Dark/System theme, English/Khmer language, change password, link to payment QR setup
+- **Payment QR** (`/vendor/payment`): Upload Bakong / ABA / ACLEDA QR images per currency; toggle active QR per type
 
 ### Admin
-- **Dashboard**: Platform-wide analytics — GMV, revenue, users, orders
-- **Users**: View, suspend, manage all users
-- **Vendors**: List all vendors, view shop details
-- **KYC Approval**: Review vendor KYC documents (ID + selfie), approve or reject
-- **Products**: Approve / reject / suspend products
-- **Categories**: CRUD with icons
-- **Coupons**: Platform-wide coupon management
-- **Payouts** (`/admin/payouts`): View all vendor payout bills, complete or bulk-complete (sends notification to vendor)
-- **Bank Account** (`/admin/bank-account`): Set up admin Bakong account for payout transfers
-- **Website Settings**: Configure site name, logo, and platform settings
-- **Reports**: Revenue, order, and user reports
+
+- **Dashboard** (`/admin/dashboard`): Platform-wide GMV, total revenue, user count, order volume
+- **Analytics** (`/admin/analytics`): Revenue charts, order trends, platform metrics, badge summaries
+- **Users** (`/admin/users`): View all users, suspend, ban, unban
+- **Vendors** (`/admin/vendors`): List all vendors, view shop details, warn, approve, reject, suspend, ban
+- **KYC Approval** (`/admin/vendor-kyc`): Review vendor KYC documents (ID card + selfie), approve or reject with reason
+- **Products** (`/admin/products`): Approve / reject / warn / suspend / ban products submitted by vendors
+- **Categories** (`/admin/categories`): Full CRUD — name, slug, icon, parent category (hierarchical tree)
+- **Coupons** (`/admin/coupons`): Platform-wide coupon creation and management
+- **Payouts** (`/admin/payouts`): View all vendor payout bills, complete individual or bulk-complete; triggers vendor notification
+- **Commissions** (`/admin/commissions`): Track monthly platform fees per vendor, mark as paid, send commission invoices by email
+- **Bank Account** (`/admin/bank-account`): Configure admin Bakong account used for vendor payout transfers; generate dynamic KHQR
+- **Website Settings** (`/admin/settings`): Set site name, upload logo (light + dark), configure site-wide banner
+- **Reports** (`/admin/reports`): View and manage user-submitted reports; update status, delete
 
 ---
 
 ## Payout Flow
 
 ```
-Customer pays order
-        │
-        ▼
-PaymentObserver auto-creates Payout record (status: pending)
-        │
-        ▼
-Vendor sees bill in "Await" tab (Orders & Payouts)
-        │
-        ▼
+Customer places order and confirms QR payment
+           │
+           ▼
+PaymentObserver detects Payment status → "completed"
+Auto-creates Payout record (status: pending)
+           │
+           ▼
+Vendor sees bill in "Await" tab — shows gross amount, fee %, net amount
+           │
+           ▼
 Admin reviews payout in /admin/payouts
 Admin completes payout → transfers via Bakong
-        │
-        ▼
+           │
+           ▼
 Payout status → "completed"
-Vendor receives notification: "Payout Transferred"
-Vendor sees bill in "Receive" tab with Bakong receipt details
+Vendor receives real-time notification: "Payout Transferred"
+Vendor sees receipt in "Receive" tab with full Bakong transfer details
 ```
 
 ---
 
 ## Platform Fee Tiers
 
-| Order Total | Fee Rate |
-|-------------|----------|
-| ≤ $50       | 5%       |
-| $51 – $150  | 8%       |
-| $151 – $300 | 10%      |
-| > $300      | 15%      |
+| Order Total  | Fee Rate |
+|--------------|----------|
+| ≤ $50        | 5%       |
+| $51 – $150   | 8%       |
+| $151 – $300  | 10%      |
+| > $300       | 15%      |
 
-Fee is deducted from vendor payout. Customers see only the order total.
+Fee is deducted automatically from vendor payout. Customers see only the order total.
 
 ---
 
@@ -203,17 +218,38 @@ Fee is deducted from vendor payout. Customers see only the order total.
 
 ```
 pending → confirmed → processing → delivered
-                   ↘
-               cancelled / refunded
+               ↘
+           cancelled / refunded
 ```
 
-Vendor confirms payment received → order moves to confirmed → vendor marks delivered.
+- **pending**: Order placed, awaiting vendor payment confirmation
+- **confirmed**: Vendor confirmed payment received
+- **processing**: Vendor preparing shipment
+- **delivered**: Order fulfilled
+- **cancelled**: Cancelled by customer or vendor (before processing)
+
+---
+
+## Authentication Methods
+
+| Method | Description |
+|--------|-------------|
+| Username/Email + Password | Standard login; vendors/customers use username |
+| Google OAuth | One-click sign-in via Google account |
+| Phone (Firebase) | OTP via Firebase phone auth (registration flow) |
+| 2FA (TOTP) | Optional two-factor authentication for any account |
+
+After social login, users are prompted to set a password and complete their profile onboarding.
 
 ---
 
 ## Multi-Language
 
-The app supports **English** and **Khmer (ខ្មែរ)**. Toggle via the language switcher in the navbar or vendor/admin settings. Translation is handled by `useLangStore` (Zustand) + the `i18n.ts` dictionary.
+The full app supports **English** and **Khmer (ខ្មែរ)**. Toggle via:
+- The globe icon in the navbar
+- Vendor/admin Settings page
+
+Translation is handled by `useLangStore` (Zustand) + the `src/lib/i18n.ts` dictionary. All user-facing strings, status labels, form placeholders, and error messages have Khmer translations.
 
 ---
 
@@ -222,173 +258,215 @@ The app supports **English** and **Khmer (ខ្មែរ)**. Toggle via the lan
 ```
 Marketplacehub/
 ├── docker-compose.yml
-├── nginx/nginx.conf
+├── nginx/
+│   └── nginx.conf                        ← reverse proxy for frontend + backend + storage
 │
-├── backend/                              ← Laravel 12 API
+├── backend/                              ← Laravel 12 REST API
+│   ├── routes/api.php                    ← all API routes (v1)
 │   ├── app/
 │   │   ├── Http/Controllers/Api/V1/
-│   │   │   ├── Admin/
-│   │   │   │   ├── AdminPayoutController.php
-│   │   │   │   ├── AdminBankAccountController.php
-│   │   │   │   ├── AdminSiteSettingController.php
-│   │   │   │   └── ...
-│   │   │   ├── Vendor/
-│   │   │   │   ├── VendorPayoutController.php
-│   │   │   │   ├── VendorPaymentQrController.php
-│   │   │   │   ├── VendorReviewController.php
-│   │   │   │   └── ...
-│   │   │   └── Customer/
-│   │   │       ├── PaymentController.php
-│   │   │       ├── ShopController.php
-│   │   │       └── ...
+│   │   │   ├── Auth/                     ← login, register, OAuth, phone, 2FA, email verify
+│   │   │   ├── Admin/                    ← admin-only endpoints
+│   │   │   ├── Vendor/                   ← vendor-only endpoints
+│   │   │   └── Customer/                 ← customer-only endpoints
 │   │   ├── Models/
-│   │   │   ├── Payout.php              ← gross_amount, vendor_amount, platform_fee, status
-│   │   │   ├── ProductImage.php        ← $appends = ['url'] (computed from path)
-│   │   │   ├── VendorBankAccount.php
-│   │   │   ├── AdminBankAccount.php
+│   │   │   ├── ProductImage.php          ← $appends=['url'] accessor (IMPORTANT)
+│   │   │   ├── Payout.php                ← gross/vendor/fee/status
+│   │   │   ├── ShopCommission.php        ← monthly fee tracking
 │   │   │   └── ...
+│   │   ├── Services/
+│   │   │   └── KhqrService.php           ← Bakong KHQR generation
 │   │   ├── Observers/
-│   │   │   └── PaymentObserver.php     ← auto-creates Payout on payment completion
-│   │   └── Services/
-│   │       └── KhqrService.php         ← Bakong QR generation
-│   └── routes/api.php
+│   │   │   └── PaymentObserver.php       ← auto-creates Payout on payment completion
+│   │   ├── Events/                       ← OrderPlaced, OrderStatusUpdated, NotificationCreated
+│   │   ├── Jobs/
+│   │   │   └── SendLowStockAlert.php
+│   │   └── Console/Commands/
+│   │       ├── AutoCalculateCommissions.php
+│   │       ├── AutoScheduleShops.php
+│   │       └── LiftExpiredProductSuspensions.php
+│   └── database/migrations/             ← 30+ migrations
 │
-└── frontend/src/
-    ├── app/
-    │   ├── (admin)/admin/
-    │   │   ├── payouts/
-    │   │   ├── bank-account/
-    │   │   └── ...
-    │   ├── (vendor)/vendor/
-    │   │   ├── payouts/                ← Orders & Payouts
-    │   │   ├── support/
-    │   │   ├── notifications/
-    │   │   └── payment/
-    │   └── (customer)/
-    │       └── support/
-    ├── features/
-    │   ├── vendor/
-    │   │   ├── VendorPayouts.tsx       ← combined orders + payout bills
-    │   │   ├── VendorReviews.tsx       ← shop + product review tabs
-    │   │   ├── VendorSettings.tsx      ← theme, language, password
-    │   │   ├── VendorNotifications.tsx
-    │   │   └── VendorSupport.tsx
-    │   ├── admin/
-    │   │   ├── AdminPayouts.tsx
-    │   │   ├── AdminBankAccount.tsx
-    │   │   └── AdminWebsiteSettings.tsx
-    │   ├── shops/
-    │   │   └── ShopDetailView.tsx      ← banner, logo, 5-star rating, favorite
-    │   └── products/
-    │       └── ProductCard.tsx         ← reads image_url from API
-    ├── store/
-    │   ├── auth.store.ts
-    │   ├── cart.store.ts
-    │   ├── lang.store.ts               ← English / Khmer
-    │   └── notification.store.ts
-    └── lib/
-        ├── i18n.ts                     ← translation dictionary
-        └── axios.ts
+└── frontend/                             ← Next.js 15
+    └── src/
+        ├── app/
+        │   ├── page.tsx                  ← homepage
+        │   ├── about/                    ← about/our story
+        │   ├── contact/
+        │   ├── privacy-policy/
+        │   ├── cookie-policy/
+        │   ├── terms-of-service/
+        │   ├── products/[slug]/
+        │   ├── shops/[slug]/
+        │   ├── categories/[slug]/
+        │   ├── (auth)/                   ← login, register, forgot-password, reset-password,
+        │   │                                set-password, verify-email, vendor-register,
+        │   │                                register/phone, register/complete, auth/callback
+        │   ├── (customer)/               ← account, checkout, orders, wishlist, notifications, support
+        │   ├── (vendor)/vendor/          ← dashboard, analytics, orders, payouts, products,
+        │   │                                inventory, coupons, reviews, shop, notifications,
+        │   │                                payment, support, settings
+        │   └── (admin)/admin/            ← dashboard, analytics, users, vendors, vendor-kyc,
+        │                                    products, categories, coupons, payouts, commissions,
+        │                                    bank-account, reports, settings
+        ├── features/
+        │   ├── products/
+        │   │   ├── ProductDetailView.tsx ← images, variants, YouTube-style reviews
+        │   │   └── ProductCard.tsx       ← reads image.url from API
+        │   ├── shops/
+        │   │   └── ShopDetailView.tsx    ← banner (Fav/Share top-right), logo overlap, reviews
+        │   ├── vendor/
+        │   │   ├── VendorPayouts.tsx     ← combined orders + payout tabs
+        │   │   ├── VendorReviews.tsx     ← shop + product review tabs with reply/delete
+        │   │   └── VendorPaymentQr.tsx   ← Bakong/ABA/ACLEDA QR upload
+        │   ├── admin/
+        │   │   ├── AdminPayouts.tsx      ← complete / bulk-complete payouts
+        │   │   ├── AdminCommissions.tsx  ← monthly fee tracking + invoice email
+        │   │   └── AdminVendorKyc.tsx    ← KYC document review
+        │   └── checkout/
+        │       └── PaymentQRModal.tsx    ← 15-min QR timer + "I've paid" confirm
+        ├── store/
+        │   ├── auth.store.ts             ← user, token, login/logout
+        │   ├── cart.store.ts             ← items, add/remove/quantity
+        │   ├── lang.store.ts             ← "en" | "km"
+        │   └── notification.store.ts
+        └── lib/
+            ├── axios.ts                  ← HTTP client with Bearer token
+            ├── i18n.ts                   ← English / Khmer translation dictionary
+            ├── echo.ts                   ← Laravel Echo WebSocket config
+            └── firebase.ts              ← Firebase phone auth config
 ```
 
 ---
 
 ## API Reference
 
-### Auth
+### Public (No Auth)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/register` | Register new user |
-| POST | `/api/v1/auth/login` | Login → Bearer token (accepts username or email) |
-| POST | `/api/v1/auth/logout` | Logout |
-| GET  | `/api/v1/auth/me` | Current user profile |
+| GET  | `/api/v1/health` | Health check |
+| GET  | `/api/v1/site-settings` | Platform name, logo, banner |
+| POST | `/api/v1/auth/register` | Register (username, email, password) |
+| POST | `/api/v1/auth/login` | Login → Bearer token |
+| GET  | `/api/v1/auth/google` | Google OAuth redirect |
+| POST | `/api/v1/auth/phone/firebase` | Firebase phone auth |
 | POST | `/api/v1/auth/forgot-password` | Send reset email |
+| POST | `/api/v1/auth/reset-password` | Reset password with token |
+| GET  | `/api/v1/products` | List products (search, filter, paginate) |
+| GET  | `/api/v1/products/:slug` | Product detail + images + reviews |
+| GET  | `/api/v1/shops` | List shops |
+| GET  | `/api/v1/shops/:slug` | Shop detail |
+| GET  | `/api/v1/shops/:slug/reviews` | Shop reviews |
+| GET  | `/api/v1/categories` | Category tree |
+| GET  | `/api/v1/platform/bank-account` | Platform Bakong account (for checkout) |
 
-### Public
+### Customer (Bearer Token)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/products` | List products (search, filter, sort, paginate) |
-| GET | `/api/v1/products/:slug` | Product detail with images + reviews |
-| GET | `/api/v1/shops` | List shops |
-| GET | `/api/v1/shops/:slug` | Shop detail |
-| GET | `/api/v1/shops/:slug/reviews` | Shop reviews |
-| GET | `/api/v1/categories` | Category tree |
-
-### Customer (Bearer token)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET/POST/PUT/DELETE | `/api/v1/customer/cart/...` | Cart |
-| GET/POST/DELETE | `/api/v1/customer/wishlist/...` | Wishlist |
+| GET/POST/PUT/DELETE | `/api/v1/customer/cart/*` | Shopping cart |
+| GET/POST/DELETE | `/api/v1/customer/wishlist/*` | Wishlist |
 | POST | `/api/v1/customer/shops/:slug/favorite` | Toggle shop favorite |
+| GET  | `/api/v1/customer/shop-favorites` | Favorited shops list |
 | POST | `/api/v1/customer/checkout/place` | Place order |
+| POST | `/api/v1/customer/checkout/coupon` | Apply coupon |
 | GET  | `/api/v1/customer/orders` | Order history |
-| POST | `/api/v1/customer/payments/:orderId/confirm` | Confirm QR payment made |
-| GET/POST/DELETE | `/api/v1/customer/addresses/...` | Addresses |
+| POST | `/api/v1/customer/orders/:id/cancel` | Cancel order |
+| POST | `/api/v1/customer/payments/:id/confirm` | Confirm QR payment made |
+| GET  | `/api/v1/customer/payments/:id/status` | Poll payment status |
+| CRUD | `/api/v1/customer/addresses/*` | Delivery addresses |
 | POST | `/api/v1/customer/reviews` | Submit product review |
 | POST | `/api/v1/customer/shops/:slug/reviews` | Submit shop review |
+| CRUD | `/api/v1/customer/saved-cards/*` | Saved payment cards |
 
-### Vendor (Bearer token + vendor role)
+### Vendor (Bearer Token + `vendor` role)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/vendor/dashboard` | Analytics |
-| CRUD | `/api/v1/vendor/products` | Products |
+| GET  | `/api/v1/vendor/dashboard` | Revenue & order summary |
+| GET  | `/api/v1/vendor/analytics/*` | Revenue, orders, top products charts |
+| CRUD | `/api/v1/vendor/products/*` | Product management |
 | POST | `/api/v1/vendor/products/:id/images` | Upload product image |
-| DELETE | `/api/v1/vendor/products/:id/images/:imgId` | Delete product image |
-| GET | `/api/v1/vendor/orders` | Orders list |
+| CRUD | `/api/v1/vendor/products/:id/variants/*` | Product variants |
+| GET  | `/api/v1/vendor/orders` | Orders list |
+| POST | `/api/v1/vendor/orders/:id/confirm` | Confirm order |
+| POST | `/api/v1/vendor/orders/:id/deliver` | Mark as delivered |
 | POST | `/api/v1/vendor/orders/:id/confirm-payment` | Confirm payment received |
-| POST | `/api/v1/vendor/orders/:id/reject-payment` | Reject → cancel + refund |
-| GET | `/api/v1/vendor/payouts` | Payout bills |
-| CRUD | `/api/v1/vendor/payment-qr` | QR payment images |
-| GET | `/api/v1/vendor/shop-reviews` | Shop reviews |
+| POST | `/api/v1/vendor/orders/:id/reject-payment` | Reject payment (cancel + notify) |
+| GET  | `/api/v1/vendor/payouts` | Payout bills |
+| CRUD | `/api/v1/vendor/payment-qr/*` | Payment QR images |
+| GET  | `/api/v1/vendor/shop-reviews` | Shop reviews |
 | POST | `/api/v1/vendor/shop-reviews/:id/reply` | Reply to shop review |
-| GET | `/api/v1/vendor/reviews` | Product reviews |
+| GET  | `/api/v1/vendor/reviews` | Product reviews |
 | POST | `/api/v1/vendor/reviews/:id/reply` | Reply to product review |
+| GET/PUT | `/api/v1/vendor/shop` | Shop info |
+| POST | `/api/v1/vendor/shop/logo` | Upload shop logo |
+| POST | `/api/v1/vendor/shop/banner` | Upload shop banner |
+| POST | `/api/v1/vendor/shop/toggle` | Open/close shop |
 
-### Admin (Bearer token + admin role)
+### Admin (Bearer Token + `admin` role)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/dashboard` | Platform analytics |
-| GET/POST | `/api/v1/admin/payouts` | Payout management |
+| GET  | `/api/v1/admin/dashboard` | Platform-wide analytics |
+| CRUD | `/api/v1/admin/users/*` | User management |
+| POST | `/api/v1/admin/users/:id/suspend` | Suspend user |
+| POST | `/api/v1/admin/users/:id/ban` | Ban user |
+| CRUD | `/api/v1/admin/vendors/*` | Vendor management |
+| GET  | `/api/v1/admin/vendor-kyc` | KYC submissions list |
+| POST | `/api/v1/admin/vendor-kyc/:id/approve` | Approve KYC |
+| POST | `/api/v1/admin/vendor-kyc/:id/reject` | Reject KYC |
+| POST | `/api/v1/admin/products/:id/approve` | Approve product |
+| POST | `/api/v1/admin/products/:id/reject` | Reject product |
+| CRUD | `/api/v1/admin/categories/*` | Category management |
+| CRUD | `/api/v1/admin/coupons/*` | Coupon management |
+| GET  | `/api/v1/admin/payouts` | All vendor payout bills |
 | POST | `/api/v1/admin/payouts/:id/complete` | Complete payout (notifies vendor) |
 | POST | `/api/v1/admin/payouts/bulk-complete` | Bulk complete payouts |
-| CRUD | `/api/v1/admin/bank-account` | Admin bank account |
-| POST | `/api/v1/admin/shops/:id/approve` | Approve shop |
-| POST | `/api/v1/admin/shops/:id/reject` | Reject shop |
-| POST | `/api/v1/admin/products/:id/approve` | Approve product |
-| CRUD | `/api/v1/admin/categories` | Categories |
-| CRUD | `/api/v1/admin/coupons` | Coupons |
-| CRUD | `/api/v1/admin/users` | Users |
-| GET/PUT | `/api/v1/admin/site-settings` | Website settings |
+| GET  | `/api/v1/admin/commissions` | Monthly commission records |
+| POST | `/api/v1/admin/commissions/:id/send-invoice` | Email commission invoice |
+| CRUD | `/api/v1/admin/bank-account/*` | Platform Bakong account |
+| GET/POST | `/api/v1/admin/site-settings` | Website name, logos, banner |
+| GET  | `/api/v1/admin/reports` | User-submitted reports |
 
 ---
 
 ## Known Gotchas
 
-1. **Product images**: `ProductImage` stores `path`, computes `url` via accessor with `$appends = ['url']`. Frontend reads `image.url`. Do not remove `$appends` or images break everywhere.
+1. **Product images — `$appends = ['url']`**: `ProductImage` stores a `path` and computes `url` via a PHP accessor. The frontend must read `image.url`. **Never remove `$appends`** or images break everywhere across product cards, detail pages, and vendor inventory.
 
-2. **Next.js `<Image>` in Docker**: The optimizer fetches through `localhost:3000` inside the container which can't reach nginx `/storage/`. Use plain `<img>` tags with `onError` fallback for product images, shop logos/banners, and QR codes.
+2. **Next.js `<Image>` in Docker**: The optimizer fetches images through `localhost:3000` inside the container, which cannot reach nginx `/storage/`. Use plain `<img>` tags (with `unoptimized` prop or raw `<img>`) for all product images, shop logos, banners, and QR codes.
 
-3. **Frontend rebuild required**: `docker-compose restart` does NOT apply new Next.js code. Always `docker-compose build frontend && docker-compose up -d frontend`.
+3. **Frontend rebuild required**: `docker-compose restart frontend` does **not** apply Next.js code changes. You must always `docker-compose build frontend && docker-compose up -d --no-deps frontend`.
 
-4. **Login uses username**: Vendors and customers log in with username (e.g. `vendor@camcart`), not email.
+4. **Login accepts username**: Vendors and customers log in with their username (e.g. `vendor@camcart`), not email. Admins may use email. The backend `AuthController` checks both fields.
 
-5. **Order relationship**: `Order` model uses `customer()` not `user()` for the buyer relationship.
+5. **Order relationship**: The `Order` model uses `customer()` (not `user()`) to get the buyer. Using `order->user` will return `null`.
 
-6. **PaymentObserver**: Auto-creates a `Payout` record when `Payment` status changes to `completed`. Don't create payouts manually or duplicates will result.
+6. **PaymentObserver — no manual Payouts**: `PaymentObserver` automatically creates a `Payout` record when a `Payment` status transitions to `completed`. Never create payouts manually or duplicates will appear in the vendor's Await tab.
+
+7. **Shop banner overlap**: The shop logo uses `-mt-10` to visually overlap the banner. Any element inside the `-mt-10` flex row may render inside the banner image area. Place action buttons as siblings **after** the overlap row, not inside it.
+
+8. **Queue workers**: Low-stock alerts and notification jobs run via the `mh_queue` container. If notifications stop working, check `docker-compose restart queue`.
 
 ---
 
 ## Security
 
-- Sanctum Bearer Token authentication
-- Role-based middleware on all protected routes
+- Sanctum Bearer Token for all API auth
+- Role-based middleware (`admin`, `vendor`, `customer`) on all protected routes
+- Authorization policies on Orders, Products, and Shops (ownership checks)
 - Input validation: Zod (frontend) + Laravel FormRequest (backend)
-- File upload validation (MIME type + size limits)
-- SQL injection prevention via Eloquent ORM
+- File upload validation — MIME type check + size limits
+- SQL injection prevention via Eloquent ORM (no raw queries)
 - Passwords hashed with bcrypt
 - CORS configured for frontend origin only
-- Rate limiting on auth routes
+- Rate limiting on auth routes (login, register, OTP)
+- Optional 2FA (TOTP via Google Authenticator)
+- Security headers middleware on all responses
+- Audit log middleware records sensitive admin actions
 
 ---
 
-*Last updated: 2026-06-25*
+*Last updated: 2026-06-28*
