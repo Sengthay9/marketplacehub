@@ -69,13 +69,13 @@ docker exec mh_backend php artisan migrate --seed
 
 ### Demo Accounts
 
-| Role     | Username / Email         | Password      |
-|----------|--------------------------|---------------|
-| Admin    | admin@marketplacehub.com | Admin@2024    |
-| Vendor   | vendor@camcart           | vendor@2024   |
-| Customer | customer@camcart         | customer@2024 |
+| Role     | Username         | Password      |
+|----------|------------------|---------------|
+| Admin    | admin            | Admin@2024    |
+| Vendor   | vendor@camcart   | vendor@2024   |
+| Customer | customer@camcart | customer@2024 |
 
-> Login accepts **username** (vendors/customers) or **email** (all roles).
+> All roles log in with **username**.
 
 ---
 
@@ -440,7 +440,7 @@ Marketplacehub/
 
 3. **Frontend rebuild required**: `docker-compose restart frontend` does **not** apply Next.js code changes. You must always `docker-compose build frontend && docker-compose up -d --no-deps frontend`.
 
-4. **Login accepts username**: Vendors and customers log in with their username (e.g. `vendor@camcart`), not email. Admins may use email. The backend `AuthController` checks both fields.
+4. **Login uses username**: All roles (admin, vendor, customer) log in with their username. The backend `AuthController` checks the `username` field, not email.
 
 5. **Order relationship**: The `Order` model uses `customer()` (not `user()`) to get the buyer. Using `order->user` will return `null`.
 
